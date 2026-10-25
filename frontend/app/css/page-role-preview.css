@@ -1,0 +1,17 @@
+/* Admin-only role preview: picker in the top bar + persistent banner. Tokens only. */
+.g-preview { display: inline-flex; align-items: center; gap: var(--s2); min-width: 0; }
+.g-preview__lbl { font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; }
+.g-preview__select { min-height: 36px; max-width: 100%; padding: 6px var(--s2); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--ink); font-size: var(--fs-ui); }
+.g-preview-banner {
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2) var(--s3);
+  padding: var(--s2) var(--gutter); background: var(--warn-tint); color: var(--warn);
+  border-bottom: 1px solid var(--line); font-size: var(--fs-ui); font-weight: 600;
+}
+.g-preview-banner__text { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+.g-preview__exit { min-height: 36px; padding: 6px var(--s3); border: 1px solid var(--warn); border-radius: var(--r-md); background: var(--surface); color: var(--warn); font-size: var(--fs-ui); font-weight: 600; }
+.g-preview__exit:hover { background: var(--surface-2); }
+.g-preview__select:focus-visible, .g-preview__exit:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+@media (max-width: 768px) {
+  .g-preview { flex: 1 1 100%; order: 6; }
+  .g-preview__select { flex: 1 1 auto; min-width: 0; }
+}

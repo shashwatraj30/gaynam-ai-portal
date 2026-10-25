@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Alert: good-law change</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&amp;display=swap">
+<style>
+body{margin:0;background:#F6F5F1;color:#1B1D1C;font-family:Inter,system-ui,sans-serif;font-size:14px;line-height:20px}
+*{box-sizing:border-box}
+a{color:#1F5C45;text-decoration:none}a:hover{color:#174634;text-decoration:underline}
+.app{display:flex;flex-wrap:wrap;min-height:100vh;background:#F6F5F1}
+.side{flex:1 1 248px;max-width:280px;background:#FBFAF7;border-right:1px solid #E4E2DC;padding:20px 14px 18px;display:flex;flex-direction:column;gap:2px}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 10px 22px;font-family:'Source Serif 4',Georgia,serif;font-size:20px;font-weight:600;color:#1B1D1C}
+.bm{width:34px;height:34px;border-radius:9px;background:#1F5C45;color:#fff;display:flex;align-items:center;justify-content:center}
+.nav{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:8px;color:#2B2F2D;font-size:15px;min-height:42px}
+.nav:hover{background:#F1F0EB;text-decoration:none;color:#1B1D1C}
+.nav.on{background:#E5EEE9;color:#1F5C45;font-weight:600}
+.nav svg{width:18px;height:18px;flex:none}
+.bdg{margin-left:auto;background:#FBEAE7;color:#A3271F;border-radius:999px;font-size:12px;padding:0 8px;font-weight:600}
+.sect{font-size:12px;color:#6A6F6C;padding:18px 12px 6px;line-height:16px}
+.me{margin-top:auto;border-top:1px solid #E4E2DC;padding:14px 8px 0;display:flex;gap:10px;align-items:center}
+.av{width:38px;height:38px;border-radius:50%;background:#E5EEE9;color:#1F5C45;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none}
+.main{flex:999 1 640px;min-width:0;display:flex;flex-direction:column}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;padding:14px 32px;border-bottom:1px solid #E4E2DC}
+.crumbs{display:flex;gap:8px;align-items:center;font-size:15px;color:#6A6F6C}.crumbs b{color:#1B1D1C;font-weight:600}
+.hist{display:inline-flex;align-items:center;gap:6px;border:1px solid #E4E2DC;background:#fff;border-radius:8px;padding:6px 12px;font-size:14px;font-weight:500;color:#1B1D1C;font-family:inherit;min-height:36px}
+.grow{flex:1}
+.search{display:flex;align-items:center;gap:8px;width:280px;max-width:100%;border:1px solid #E4E2DC;background:#fff;border-radius:8px;padding:8px 12px;color:#6A6F6C;font:inherit;font-size:14px;min-height:38px}
+.kbd{margin-left:auto;font-size:11px;border:1px solid #E4E2DC;border-radius:4px;padding:0 5px}
+.fresh{display:flex;align-items:center;gap:6px;font-size:13px;color:#4A4F4C}.dot{width:8px;height:8px;border-radius:50%;background:#2E8B5E;display:inline-block}
+.lang{display:flex;border:1px solid #E4E2DC;border-radius:8px;overflow:hidden;font-size:13px}.lang span{padding:5px 10px;background:#fff}.lang span.on{background:#1B1D1C;color:#fff}
+.page{padding:32px 40px 48px;display:flex;flex-direction:column;gap:24px}
+h1{font-family:'Source Serif 4',Georgia,serif;font-weight:500;font-size:40px;line-height:48px;margin:0}
+h2{font-family:'Source Serif 4',Georgia,serif;font-weight:500;font-size:24px;line-height:32px;margin:0}
+.serif{font-family:'Source Serif 4',Georgia,serif}
+.sub{color:#4A4F4C;font-size:16px;line-height:24px;margin:6px 0 0}
+.meta{color:#6A6F6C;font-size:13px;line-height:18px}
+.card{background:#fff;border:1px solid #E4E2DC;border-radius:10px;padding:24px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 10px;font-size:12px;line-height:18px;font-weight:600;background:#F1F0EB;color:#3A3F3C;white-space:nowrap}
+.good{background:#E5EEE9;color:#1F5C45}.warn{background:#FBF0D9;color:#8A5A00}.bad{background:#FBEAE7;color:#A3271F}.info{background:#E8EEF8;color:#2D4E8A}
+.btn{display:inline-flex;align-items:center;gap:8px;justify-content:center;border-radius:8px;padding:10px 16px;font-size:14px;font-weight:600;border:1px solid #E4E2DC;background:#fff;color:#1B1D1C;font-family:inherit;min-height:44px;cursor:pointer}
+.btn.pri{background:#1F5C45;border-color:#1F5C45;color:#fff}
+.list{border:1px solid #E4E2DC;border-radius:10px;background:#fff;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.li{display:flex;align-items:center;gap:16px;padding:16px 20px;border-top:1px solid #EEECE7;flex-wrap:wrap}.li:first-child{border-top:0}
+.t{font-weight:600;font-size:15px;line-height:22px;color:#1B1D1C}
+.hl{background:#F5E6B3}
+.flow{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.fs{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;width:120px;font-size:14px}
+.fs i{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center}
+.arrow{color:#9A978F;padding-top:14px}
+.cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;align-items:stretch}
+@media (max-width:1000px){.cols2{grid-template-columns:minmax(0,1fr)}.side{max-width:none}}
+</style>
+</helmet>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><span class="bm"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3v18M7 21h10M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z"/></svg></span>Gyanam AI</div>
+    <a class="nav" href="Home.dc.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z"/></svg>Home</a>
+    <a class="nav" href="Research.dc.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/></svg>Research</a>
+    <a class="nav" href="Matters.dc.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 6h6l2 2h10v11H3z"/></svg>Matters</a>
+    <a class="nav" href="Drafts.dc.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>Drafts</a>
+    <a class="nav" href="Judgment.dc.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/></svg>Judgments</a>
+    <a class="nav" href="Graph.dc.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="9" cy="18" r="2.5"/><path d="M8.4 6.3l7.2 1.4M6.8 8.4l1.6 7.2"/></svg>Citation graph</a>
+    <a class="nav on" href="Alerts.dc.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"/></svg>Alerts<span class="bdg">2</span></a>
+    <div class="sect">High Court of Judicature for Rajasthan, Jodhpur</div>
+    <a class="nav" href="Chamber.dc.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.5 3-6 6-6s6 2.5 6 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14c2 .8 3 2.8 3 6"/></svg>Chamber</a>
+    <a class="nav" href="Audit.dc.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg>Audit trail</a>
+    <a class="nav" href="Library.dc.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5"/></svg>Library</a>
+    <div class="me"><span class="av">RS</span><div><div class="t" style="font-size: 14px">Justice R.K. Sharma</div><div class="meta">Judicial user · HC-RAJ-JODH-882</div></div></div>
+  </aside>
+  <div class="main">
+    <header class="top">
+      <nav class="crumbs" aria-label="Breadcrumb"><a href="Alerts.dc.html" style="color: #6A6F6C">Alerts</a><span>/</span><b>Good-law change</b></nav>
+      <button class="hist"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Alert history</button>
+      <span class="grow"></span>
+      <button class="search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>Search the law<span class="kbd">Ctrl K</span></button>
+      <span class="fresh"><span class="dot"></span>Corpus synced 4 min ago</span>
+      <span class="lang"><span class="on">EN</span><span>HI</span></span>
+    </header>
+    <main class="page">
+      <div style="display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap"><span class="chip bad"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3 2 20h20zM12 10v4"/></svg>Overruled</span><span class="meta" style="font-size: 14px">Found when your draft was re-checked today, 09:46</span></div>
+        <h1>Krishna Janardhan Bhat v. Dattatraya G. Hegde (2008) has been overruled</h1>
+        <p class="sub" style="margin: 0">Overruled by the Supreme Court in Rangappa v. Sri Mohan, (2010) 11 SCC 441. Here is what it affects in your work.</p>
+      </div>
+      <div class="cols2">
+        <section class="card" style="display: flex; flex-direction: column; gap: 14px">
+          <span class="meta" style="font-size: 14px">What the overruling court held</span>
+          <p class="serif" style="margin: 0; font-size: 19px; line-height: 33px">“The presumption mandated by Section 139 of the NI Act <span class="hl">includes the existence of a legally enforceable debt or liability</span>.”</p>
+          <span class="meta">Rangappa v. Sri Mohan · Supreme Court, Full Bench (3 judges) · 7 May 2010</span>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap"><a class="btn" href="Judgment.dc.html" style="color: #1B1D1C">Open Rangappa</a><a class="btn" href="Judgment.dc.html" style="color: #1B1D1C">Open the overruled judgment</a></div>
+        </section>
+        <section class="card" style="display: flex; flex-direction: column; gap: 20px">
+          <span class="meta" style="font-size: 14px">How the change reached you</span>
+          <div class="flow">
+            <div class="fs"><i style="background: #E8EEF8; color: #2D4E8A"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/></svg></i>Status recorded in the corpus</div>
+            <span class="arrow" aria-hidden="true">→</span>
+            <div class="fs"><i style="background: #FBEAE7; color: #A3271F"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="9" cy="18" r="2.5"/><path d="M8.4 6.3l7.2 1.4M6.8 8.4l1.6 7.2"/></svg></i>Overruling link: Rangappa</div>
+            <span class="arrow" aria-hidden="true">→</span>
+            <div class="fs"><i style="background: #FBF0D9; color: #8A5A00"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></i>Your saved drafts re-checked</div>
+            <span class="arrow" aria-hidden="true">→</span>
+            <div class="fs"><i style="background: #E5EEE9; color: #1F5C45"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"/></svg></i>You are told</div>
+          </div>
+        </section>
+      </div>
+      <section style="display: flex; flex-direction: column; gap: 12px">
+        <h2>Affected in your work</h2>
+        <div class="list">
+          <div class="li"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8A5A00" stroke-width="1.6" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg><span style="flex: 1; min-width: 240px"><span class="t" style="display: block">Draft · S.B. Cr. Revision 412/2026, ¶ 16</span><span class="meta" style="font-size: 14px">Cited for the view that Section 139 does not cover a legally enforceable debt</span></span><span class="chip warn">Needs a change</span><a class="btn pri" href="Studio.dc.html" style="color: #fff">Open with fix</a></div>
+          <div class="li"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A4F4C" stroke-width="1.6" aria-hidden="true"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/></svg><span style="flex: 1; min-width: 240px"><span class="t" style="display: block">Saved research · Presumption under Section 139 NI Act</span><span class="meta" style="font-size: 14px">Already ranked last and marked overruled in the results</span></span><span class="chip good">Up to date</span><a class="btn" href="Research.dc.html" style="color: #1B1D1C">View</a></div>
+        </div>
+      </section>
+      <section style="display: flex; flex-direction: column; gap: 12px">
+        <h2 style="font-size: 21px">Other alerts</h2>
+        <div class="list">
+          <div class="li"><span class="chip bad">Overruled</span><span style="flex: 1; min-width: 240px"><span class="t" style="display: block">ADM Jabalpur v. Shivkant Shukla (1976) 2 SCC 521</span><span class="meta" style="font-size: 14px">Overruled by K.S. Puttaswamy (2017) 10 SCC 1 · not cited in your drafts</span></span><a class="btn" href="CitationCheck.dc.html" style="color: #1B1D1C">Details</a></div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

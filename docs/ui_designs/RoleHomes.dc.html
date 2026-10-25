@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Role Homes</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&amp;family=Noto+Sans+Devanagari:wght@400;500;600&amp;family=Noto+Serif+Devanagari:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;background:#F6F5F1;color:#1B1D1C;font-family:Inter,system-ui,sans-serif;font-size:14px;line-height:20px}
+*{box-sizing:border-box}
+a{color:#1F5C45;text-decoration:none}a:hover{color:#174634;text-decoration:underline}
+.app{display:flex;flex-wrap:wrap;min-height:100vh;background:#F6F5F1}
+.side{flex:1 1 248px;max-width:280px;background:#FBFAF7;border-right:1px solid #E4E2DC;padding:20px 14px 18px;display:flex;flex-direction:column;gap:2px}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 10px 22px;font-family:'Source Serif 4',Georgia,serif;font-size:20px;font-weight:600;color:#1B1D1C}
+.bm{width:34px;height:34px;border-radius:9px;background:#1F5C45;color:#fff;display:flex;align-items:center;justify-content:center}
+.nav{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:8px;color:#2B2F2D;font-size:15px;min-height:42px}
+.nav:hover{background:#F1F0EB;text-decoration:none;color:#1B1D1C}
+.nav.on{background:#E5EEE9;color:#1F5C45;font-weight:600}
+.nav svg{width:18px;height:18px;flex:none}
+.bdg{margin-left:auto;background:#FBEAE7;color:#A3271F;border-radius:999px;font-size:12px;padding:0 8px;font-weight:600}
+.sect{font-size:12px;color:#6A6F6C;padding:18px 12px 6px;line-height:16px}
+.me{margin-top:auto;border-top:1px solid #E4E2DC;padding:14px 8px 0;display:flex;gap:10px;align-items:center}
+.av{width:38px;height:38px;border-radius:50%;background:#E5EEE9;color:#1F5C45;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none}
+.main{flex:999 1 640px;min-width:0;display:flex;flex-direction:column}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;padding:14px 32px;border-bottom:1px solid #E4E2DC}
+.crumbs{display:flex;gap:8px;align-items:center;font-size:15px;color:#6A6F6C}.crumbs b{color:#1B1D1C;font-weight:600}
+.hist{display:inline-flex;align-items:center;gap:6px;border:1px solid #E4E2DC;background:#fff;border-radius:8px;padding:6px 12px;font-size:14px;font-weight:500;color:#1B1D1C;font-family:inherit;min-height:36px}
+.hist.on{background:#E5EEE9;border-color:#CFE0D6;color:#1F5C45}
+.grow{flex:1}
+.search{display:flex;align-items:center;gap:8px;width:280px;max-width:100%;border:1px solid #E4E2DC;background:#fff;border-radius:8px;padding:8px 12px;color:#6A6F6C;font:inherit;font-size:14px;min-height:38px}
+.kbd{margin-left:auto;font-size:11px;border:1px solid #E4E2DC;border-radius:4px;padding:0 5px}
+.fresh{display:flex;align-items:center;gap:6px;font-size:13px;color:#4A4F4C}.dot{width:8px;height:8px;border-radius:50%;background:#2E8B5E;display:inline-block}
+.lang{display:flex;border:1px solid #E4E2DC;border-radius:8px;overflow:hidden;font-size:13px}.lang span{padding:5px 10px;background:#fff}.lang span.on{background:#1B1D1C;color:#fff}
+.page{padding:28px 32px 40px;display:flex;flex-direction:column;gap:24px}
+h1{font-family:'Source Serif 4',Georgia,serif;font-weight:500;font-size:40px;line-height:48px;margin:0}
+h2{font-family:'Source Serif 4',Georgia,serif;font-weight:500;font-size:24px;line-height:32px;margin:0}
+.serif{font-family:'Source Serif 4',Georgia,serif}
+.sub{color:#4A4F4C;font-size:16px;line-height:24px;margin:6px 0 0}
+.meta{color:#6A6F6C;font-size:13px;line-height:18px}
+.lbl{font-size:12px;color:#6A6F6C;font-weight:600}
+.card{background:#fff;border:1px solid #E4E2DC;border-radius:10px;padding:24px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 10px;font-size:12px;line-height:18px;font-weight:600;background:#F1F0EB;color:#3A3F3C;white-space:nowrap}
+.good{background:#E5EEE9;color:#1F5C45}.warn{background:#FBF0D9;color:#8A5A00}.bad{background:#FBEAE7;color:#A3271F}.info{background:#E8EEF8;color:#2D4E8A}
+.btn{display:inline-flex;align-items:center;gap:8px;justify-content:center;border-radius:8px;padding:10px 16px;font-size:14px;font-weight:600;border:1px solid #E4E2DC;background:#fff;color:#1B1D1C;font-family:inherit;min-height:44px;cursor:pointer}
+.btn.pri{background:#1F5C45;border-color:#1F5C45;color:#fff}
+.t{font-weight:600;font-size:15px;line-height:22px;color:#1B1D1C}
+.cite{display:inline-flex;align-items:center;gap:4px;border-radius:6px;padding:1px 8px;font-size:13px;font-weight:600;background:#E5EEE9;color:#1F5C45}
+.cite.r{background:#FBEAE7;color:#A3271F}
+.hl{background:#F5E6B3}
+.ck{display:flex;gap:10px;padding:9px 0;border-top:1px solid #EEECE7;align-items:flex-start;font-size:14px}
+.hrow{display:flex;flex-direction:column;gap:2px;padding:9px 10px;border-radius:8px;color:#1B1D1C}
+.hrow:hover{background:#F1F0EB;text-decoration:none}
+.hrow.on{background:#E5EEE9}
+.res{display:flex;flex-direction:column;gap:8px;padding:18px 20px;border-top:1px solid #EEECE7}
+.res.on{background:#FAFBF9;box-shadow:inset 0 0 0 1px #CFE0D6}
+.skel{display:block;background:#ECEAE4;border-radius:6px}
+.bn{display:flex;gap:12px;align-items:flex-start;padding:12px 16px;border-radius:8px;border:1px solid #E4E2DC;font-size:14px;line-height:20px;background:#F1F0EB;color:#1B1D1C}
+.bn.warn{background:#FBF0D9;border-color:#EBD7A3;color:#6B4500}.bn.info{background:#E8EEF8;border-color:#C9D6EC;color:#2D4E8A}.bn.bad{background:#FBEAE7;border-color:#F0C9C3;color:#A3271F}
+.frame{background:#F6F5F1;border:1px solid #E4E2DC;border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
+.frame .bar{display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid #E4E2DC;background:#FBFAF7;font-size:14px;color:#6A6F6C}
+.scrim{background:rgba(27,29,28,.45)}
+.modal{background:#fff;border-radius:10px;border:1px solid #E4E2DC;box-shadow:0 8px 24px rgba(27,29,28,.18);padding:24px;display:flex;flex-direction:column;gap:14px}
+.toast{background:#1B1D1C;color:#fff;border-radius:8px;padding:12px 16px;display:flex;gap:12px;align-items:center;font-size:14px;box-shadow:0 4px 12px rgba(27,29,28,.2)}
+.focus{outline:2px solid #2D6CDF;outline-offset:2px}
+.g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
+.g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}
+.cap{font-size:12px;color:#6A6F6C;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.input{border:1px solid #D9D6CF;border-radius:8px;padding:10px 12px;font:inherit;font-size:15px;background:#fff;color:#1B1D1C;min-height:44px;width:100%}
+.field{display:flex;flex-direction:column;gap:6px}.field label{font-size:13px;font-weight:600;color:#3A3F3C}
+.tabs{display:flex;gap:28px;border-bottom:1px solid #E4E2DC}.tab{padding:10px 0;color:#4A4F4C;font-size:15px}.tab.on{color:#1F5C45;font-weight:600;box-shadow:inset 0 -2px 0 #1F5C45}
+.step{display:flex;align-items:center;gap:10px;font-size:14px}.step i{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:12px}
+.stat{display:flex;flex-direction:column;gap:2px}.stat b{font-family:'Source Serif 4',Georgia,serif;font-size:32px;line-height:38px;font-weight:500;color:#1F5C45}
+.li{display:flex;align-items:center;gap:16px;padding:14px 20px;border-top:1px solid #EEECE7}
+.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#4A4F4C}
+@media (max-width:1000px){.side{max-width:none}.g2,.g3{grid-template-columns:minmax(0,1fr)}}
+.ico{width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex:none;background:#F1F0EB;color:#4A4F4C}
+.serif{font-family:"Source Serif 4",Georgia,serif}
+.btn.red{background:#A3271F;border-color:#A3271F;color:#fff}.btn.ghost{border-color:transparent;background:transparent;color:#1F5C45}
+.sub2{color:#4A4F4C}
+.steps{display:flex;gap:10px 28px;flex-wrap:wrap;align-items:center}
+.st{display:flex;align-items:center;gap:10px;font-size:14px}
+.st i{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:13px;font-weight:600}
+.line{width:40px;height:1px;background:#D9D6CF}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+textarea.input{line-height:23px;resize:vertical}
+.cols2m{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);gap:24px;align-items:start}
+.rd{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-top:1px solid #EEECE7;font-size:14px}.rd span{color:#6A6F6C}.rd b{text-align:right;font-weight:600}
+@media (max-width:1000px){.cols2m{grid-template-columns:minmax(0,1fr)}}
+.cols2{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,400px);gap:24px;align-items:start}
+@media (max-width:1000px){.cols2{grid-template-columns:minmax(0,1fr)}}
+</style>
+</helmet>
+<div style="max-width:1440px;margin:0 auto;padding:56px 64px 72px;display:flex;flex-direction:column;gap:32px">
+  <header style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-end;justify-content:space-between">
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:12px"><span style="width:40px;height:40px;border-radius:10px;background:#1F5C45;color:#fff;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3v18M7 21h10M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z"/></svg></span><span class="serif" style="font-size:22px;font-weight:600">Gyanam AI</span></div>
+      <h1 class="serif" style="font-size:48px;line-height:56px">Home for each role</h1>
+      <p style="margin:0;color:#4A4F4C;font-size:17px;line-height:26px;max-width:820px">What each role sees on Home. Judicial users keep the Home board. Counts are real values from the corpus; matters and drafts appear only for roles that may open them.</p>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="chip">Researcher</span><span class="chip">Faculty and student</span><span class="chip">Administrator</span><span class="chip">Auditor</span></div>
+  </header>
+  <section class="frame" aria-label="Researcher Home">
+    <div class="bar"><span class="cap">Researcher / law clerk</span><span>Adv. Siddharth Mathur · Researcher</span><span class="grow"></span><span class="meta">Sidebar: Home, Research, Matters, Drafts, Judgments, Citation graph, Alerts</span></div>
+    <div style="padding:28px 40px 36px;display:flex;flex-direction:column;gap:20px">
+      <div><h1>Good morning, Siddharth</h1><p class="sub">Four matters are open. One is waiting for your edit.</p></div>
+      <div class="cols2">
+        <div style="display:flex;flex-direction:column;gap:20px;min-width:0">
+          <section class="card" style="display:flex;flex-direction:column;gap:12px"><h2>Ask a question about the law</h2>
+            <div style="display:flex;gap:10px;align-items:center;border:1px solid #D9D6CF;border-radius:10px;padding:8px 8px 8px 16px;background:#FCFCFA"><span style="flex:1;color:#6A6F6C;font-size:16px">Example: bail in economic offences</span><button class="btn pri">Ask</button></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="chip">Searches 1,18,096 judgments (metadata and source PDFs)</span><span class="chip">Overruled authorities are flagged</span></div></section>
+          <section class="card" style="padding:0;overflow:hidden"><div style="padding:18px 20px 10px;display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap"><h2>Your matters</h2><span class="meta">Sorted by next action</span></div>
+            <div class="bn info" style="margin:0 20px 10px;border-radius:8px"><span>Matter assignment is not available yet, so all matters are shown.</span></div>
+            <div class="li"><div style="flex:1"><div class="t">FIR No. 06/17 · State of West Bengal v. Accused Persons</div><div class="meta">Court of Addl. CJM, Barrackpore</div></div><span class="chip warn">Needs a change</span></div>
+            <div class="li"><div style="flex:1"><div class="t">S.B. Cr. Revision 412/2026 · Mehra Traders v. State</div><div class="meta">Draft sections being prepared</div></div><span class="chip good">Drafting</span></div></section>
+        </div>
+        <section class="card" style="display:flex;flex-direction:column;gap:8px"><h2>Recent research</h2>
+          <a class="hrow" href="Research.dc.html"><span style="font-size:14px">Presumption under Section 139 NI Act</span><span class="meta">Cr. Revision 412/2026</span></a>
+          <a class="hrow" href="Research.dc.html"><span style="font-size:14px">Dishonour of cheque, section 138 notice</span><span class="meta">Cr. Revision 412/2026</span></a>
+          <span class="meta">Kept in this browser for this session only.</span></section>
+      </div>
+    </div>
+  </section>
+
+  <section class="frame" aria-label="Faculty and student Home">
+    <div class="bar"><span class="cap">Faculty / student</span><span>Dr. Aparna Sengupta · Faculty, or Ananya Rathore · Student</span><span class="grow"></span><span class="meta">Sidebar: Home, Research, Judgments, Citation graph, Library · no Matters, Drafts or Alerts</span></div>
+    <div style="padding:28px 40px 36px;display:flex;flex-direction:column;gap:20px">
+      <div><h1>Good morning, Dr. Sengupta</h1><p class="sub">Search the law, follow how a precedent was applied, and read the source.</p></div>
+      <div class="cols2">
+        <div style="display:flex;flex-direction:column;gap:20px;min-width:0">
+          <section class="card" style="display:flex;flex-direction:column;gap:12px"><h2>Ask a question about the law</h2>
+            <div style="display:flex;gap:10px;align-items:center;border:1px solid #D9D6CF;border-radius:10px;padding:8px 8px 8px 16px;background:#FCFCFA"><span style="flex:1;color:#6A6F6C;font-size:16px">Example: alternative remedy and Article 226</span><button class="btn pri">Ask</button></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="chip">Searches 1,18,096 judgments (metadata and source PDFs)</span></div></section>
+          <section class="card" style="display:flex;flex-direction:column;gap:6px"><h2>Citation lineages</h2><span class="meta">See how a precedent was applied, distinguished or overruled.</span>
+            <div class="li"><div style="flex:1"><div class="t">Constitutional liberty and privacy</div><div class="meta">ADM Jabalpur → Puttaswamy</div></div><a href="Graph.dc.html" style="font-weight:600">Open graph</a></div>
+            <div class="li"><div style="flex:1"><div class="t">Cheque bounce and NI Act</div><div class="meta">K. J. Bhat → Rangappa</div></div><a href="Graph.dc.html" style="font-weight:600">Open graph</a></div>
+            <div class="li"><div style="flex:1"><div class="t">Natural justice and inquiry</div><div class="meta">Mohd. Ramzan Khan → ECIL</div></div><a href="Graph.dc.html" style="font-weight:600">Open graph</a></div></section>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:20px;min-width:0">
+          <section class="card" style="display:flex;flex-direction:column;gap:8px"><h2>Recent research</h2><a class="hrow" href="Research.dc.html"><span style="font-size:14px">Alternative remedy and Article 226</span><span class="meta">General</span></a><a class="hrow" href="Research.dc.html"><span style="font-size:14px">Supply of inquiry report before penalty</span><span class="meta">General</span></a></section>
+          <section class="card" style="display:flex;flex-direction:column;gap:6px"><h2>New in the corpus</h2>
+            <div class="ck" style="border-top:0"><div><div class="t" style="font-size:14px">Bhim Sen v. The State of Punjab</div><div class="meta">Supreme Court · [1952] 1 S.C.R. 18</div></div></div>
+            <div class="ck"><div><div class="t" style="font-size:14px">Commissioner of Income Tax, Bombay v. Finlay Mills Ltd.</div><div class="meta">Supreme Court · [1952] 1 S.C.R. 11</div></div></div></section>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="frame" aria-label="Administrator Home">
+    <div class="bar"><span class="cap">Administrator / registrar</span><span>Prof. (Dr.) Harishankar Pareek · Administrator</span><span class="grow"></span><span class="meta">Sidebar: Home, Research, Judgments, Chamber, Audit trail, Library</span></div>
+    <div style="padding:28px 40px 36px;display:flex;flex-direction:column;gap:20px">
+      <div><h1>Good morning, Professor Pareek</h1><p class="sub">Corpus, sync, users and the audit chain at a glance.</p></div>
+      <div class="g3">
+        <section class="card stat"><div class="lbl">Judgments in the corpus</div><b>1,18,096</b><span class="meta">Metadata and source PDFs</span></section>
+        <section class="card stat"><div class="lbl">Corpus sync</div><b style="font-size:24px;line-height:38px">4 min ago</b><div style="display:flex;gap:10px;align-items:center"><span class="meta">Last sync recorded by the server</span><button class="btn" style="min-height:32px;padding:2px 10px;font-size:12px">Sync now</button></div></section>
+        <section class="card stat"><div class="lbl">Audit chain</div><div style="display:flex;gap:8px;align-items:center;margin-top:4px"><span class="chip good">Chain intact</span></div><span class="meta">1,201 ledger blocks verified · 1,213 audit rows</span></section>
+      </div>
+      <div class="cols2">
+        <section class="card" style="padding:0;overflow:hidden"><div style="padding:18px 20px 8px"><h2>Judgments by court</h2></div>
+          <div class="rd" style="padding:9px 20px"><span>Gujarat</span><b>43,556</b></div><div class="rd" style="padding:9px 20px"><span>Telangana</span><b>20,402</b></div><div class="rd" style="padding:9px 20px"><span>Bombay</span><b>18,809</b></div><div class="rd" style="padding:9px 20px"><span>Uttarakhand</span><b>14,505</b></div><div class="rd" style="padding:9px 20px"><span>Chhattisgarh</span><b>5,398</b></div><div class="rd" style="padding:9px 20px"><span>Supreme Court of India</span><b>4,611</b></div><div class="rd" style="padding:9px 20px"><span>Rajasthan</span><b>926</b></div>
+          <div class="meta" style="padding:10px 20px 16px">Other courts make up the rest. The sum is 1,18,096.</div></section>
+        <div style="display:flex;flex-direction:column;gap:20px">
+          <section class="card" style="display:flex;flex-direction:column;gap:6px"><h2>Users</h2><div class="rd" style="border-top:0"><span>Institutional profiles</span><b>6</b></div><div class="rd"><span>Active</span><b>6</b></div><a href="Chamber.dc.html" style="font-weight:600">Open Chamber and access</a></section>
+          <section class="card" style="display:flex;flex-direction:column;gap:6px"><h2>Recent activity</h2><div class="rd" style="border-top:0"><span>Search</span><b class="mono">24 Oct, 23:04</b></div><div class="rd"><span>Citation check</span><b class="mono">24 Oct, 23:00</b></div><div class="rd"><span>Sign-in</span><b class="mono">24 Oct, 23:00</b></div></section>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="frame" aria-label="Auditor Home">
+    <div class="bar"><span class="cap">Auditor</span><span>CA Rajeshwar Singhal · Auditor</span><span class="grow"></span><span class="meta">Sidebar: Audit trail, Library · signs in straight to the Audit trail</span></div>
+    <div style="padding:28px 40px 36px;display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:flex-end"><div><h1>Audit trail</h1><p class="sub">Every search, upload, draft and approval, in a hash-chained ledger that shows if any entry is changed.</p></div><div style="display:flex;gap:10px"><button class="btn">Export CSV</button><button class="btn pri">Verify the chain</button></div></div>
+      <div class="bn" style="background:#E5EEE9;border-color:#CFE0D6;color:#1F5C45"><span style="font-weight:600">Chain intact · 1,201 entries verified</span><span class="meta" style="margin-left:auto">Checked 24 Oct 2026, 23:21 · latest entry hash 8204a827…31f5cc</span></div>
+      <section class="card" style="padding:0;overflow:hidden"><div style="padding:16px 20px 6px" class="lbl">Recent activity</div>
+        <div class="li"><span class="meta" style="width:130px">24 Oct, 23:04:57</span><span class="chip">Search</span><span style="flex:1">dishonour of cheque section 138 notice · all courts</span><span class="mono">8204a827…</span></div>
+        <div class="li"><span class="meta" style="width:130px">24 Oct, 23:00:23</span><span class="chip info">Citation check</span><span style="flex:1">(2017) 10 SCC 1</span><span class="mono">84737482…</span></div>
+        <div class="li"><span class="meta" style="width:130px">24 Oct, 23:00:09</span><span class="chip">Sign-in</span><span style="flex:1">Institutional SSO issued</span><span class="mono">a91c03e2…</span></div>
+        <div class="meta" style="padding:10px 20px 16px">Until user attribution ships, every row carries the same user. Auditors can read and export; they cannot change any entry.</div></section>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2100}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

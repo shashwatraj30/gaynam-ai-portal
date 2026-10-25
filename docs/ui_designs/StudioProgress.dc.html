@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Drafting studio · progress and tabs</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&amp;family=Noto+Sans+Devanagari:wght@400;500;600&amp;family=Noto+Serif+Devanagari:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;background:#F6F5F1;color:#1B1D1C;font-family:Inter,system-ui,sans-serif;font-size:14px;line-height:20px}
+*{box-sizing:border-box}
+a{color:#1F5C45;text-decoration:none}a:hover{color:#174634;text-decoration:underline}
+.app{display:flex;flex-wrap:wrap;min-height:100vh;background:#F6F5F1}
+.side{flex:1 1 248px;max-width:280px;background:#FBFAF7;border-right:1px solid #E4E2DC;padding:20px 14px 18px;display:flex;flex-direction:column;gap:2px}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 10px 22px;font-family:'Source Serif 4',Georgia,serif;font-size:20px;font-weight:600;color:#1B1D1C}
+.bm{width:34px;height:34px;border-radius:9px;background:#1F5C45;color:#fff;display:flex;align-items:center;justify-content:center}
+.nav{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:8px;color:#2B2F2D;font-size:15px;min-height:42px}
+.nav:hover{background:#F1F0EB;text-decoration:none;color:#1B1D1C}
+.nav.on{background:#E5EEE9;color:#1F5C45;font-weight:600}
+.nav svg{width:18px;height:18px;flex:none}
+.bdg{margin-left:auto;background:#FBEAE7;color:#A3271F;border-radius:999px;font-size:12px;padding:0 8px;font-weight:600}
+.sect{font-size:12px;color:#6A6F6C;padding:18px 12px 6px;line-height:16px}
+.me{margin-top:auto;border-top:1px solid #E4E2DC;padding:14px 8px 0;display:flex;gap:10px;align-items:center}
+.av{width:38px;height:38px;border-radius:50%;background:#E5EEE9;color:#1F5C45;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none}
+.main{flex:999 1 640px;min-width:0;display:flex;flex-direction:column}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;padding:14px 32px;border-bottom:1px solid #E4E2DC}
+.crumbs{display:flex;gap:8px;align-items:center;font-size:15px;color:#6A6F6C}.crumbs b{color:#1B1D1C;font-weight:600}
+.hist{display:inline-flex;align-items:center;gap:6px;border:1px solid #E4E2DC;background:#fff;border-radius:8px;padding:6px 12px;font-size:14px;font-weight:500;color:#1B1D1C;font-family:inherit;min-height:36px}
+.hist.on{background:#E5EEE9;border-color:#CFE0D6;color:#1F5C45}
+.grow{flex:1}
+.search{display:flex;align-items:center;gap:8px;width:280px;max-width:100%;border:1px solid #E4E2DC;background:#fff;border-radius:8px;padding:8px 12px;color:#6A6F6C;font:inherit;font-size:14px;min-height:38px}
+.kbd{margin-left:auto;font-size:11px;border:1px solid #E4E2DC;border-radius:4px;padding:0 5px}
+.fresh{display:flex;align-items:center;gap:6px;font-size:13px;color:#4A4F4C}.dot{width:8px;height:8px;border-radius:50%;background:#2E8B5E;display:inline-block}
+.lang{display:flex;border:1px solid #E4E2DC;border-radius:8px;overflow:hidden;font-size:13px}.lang span{padding:5px 10px;background:#fff}.lang span.on{background:#1B1D1C;color:#fff}
+.page{padding:28px 32px 40px;display:flex;flex-direction:column;gap:24px}
+h1{font-family:'Source Serif 4',Georgia,serif;font-weight:500;font-size:40px;line-height:48px;margin:0}
+h2{font-family:'Source Serif 4',Georgia,serif;font-weight:500;font-size:24px;line-height:32px;margin:0}
+.serif{font-family:'Source Serif 4',Georgia,serif}
+.sub{color:#4A4F4C;font-size:16px;line-height:24px;margin:6px 0 0}
+.meta{color:#6A6F6C;font-size:13px;line-height:18px}
+.lbl{font-size:12px;color:#6A6F6C;font-weight:600}
+.card{background:#fff;border:1px solid #E4E2DC;border-radius:10px;padding:24px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 10px;font-size:12px;line-height:18px;font-weight:600;background:#F1F0EB;color:#3A3F3C;white-space:nowrap}
+.good{background:#E5EEE9;color:#1F5C45}.warn{background:#FBF0D9;color:#8A5A00}.bad{background:#FBEAE7;color:#A3271F}.info{background:#E8EEF8;color:#2D4E8A}
+.btn{display:inline-flex;align-items:center;gap:8px;justify-content:center;border-radius:8px;padding:10px 16px;font-size:14px;font-weight:600;border:1px solid #E4E2DC;background:#fff;color:#1B1D1C;font-family:inherit;min-height:44px;cursor:pointer}
+.btn.pri{background:#1F5C45;border-color:#1F5C45;color:#fff}
+.t{font-weight:600;font-size:15px;line-height:22px;color:#1B1D1C}
+.cite{display:inline-flex;align-items:center;gap:4px;border-radius:6px;padding:1px 8px;font-size:13px;font-weight:600;background:#E5EEE9;color:#1F5C45}
+.cite.r{background:#FBEAE7;color:#A3271F}
+.hl{background:#F5E6B3}
+.ck{display:flex;gap:10px;padding:9px 0;border-top:1px solid #EEECE7;align-items:flex-start;font-size:14px}
+.hrow{display:flex;flex-direction:column;gap:2px;padding:9px 10px;border-radius:8px;color:#1B1D1C}
+.hrow:hover{background:#F1F0EB;text-decoration:none}
+.hrow.on{background:#E5EEE9}
+.res{display:flex;flex-direction:column;gap:8px;padding:18px 20px;border-top:1px solid #EEECE7}
+.res.on{background:#FAFBF9;box-shadow:inset 0 0 0 1px #CFE0D6}
+.skel{display:block;background:#ECEAE4;border-radius:6px}
+.bn{display:flex;gap:12px;align-items:flex-start;padding:12px 16px;border-radius:8px;border:1px solid #E4E2DC;font-size:14px;line-height:20px;background:#F1F0EB;color:#1B1D1C}
+.bn.warn{background:#FBF0D9;border-color:#EBD7A3;color:#6B4500}.bn.info{background:#E8EEF8;border-color:#C9D6EC;color:#2D4E8A}.bn.bad{background:#FBEAE7;border-color:#F0C9C3;color:#A3271F}
+.frame{background:#F6F5F1;border:1px solid #E4E2DC;border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
+.frame .bar{display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid #E4E2DC;background:#FBFAF7;font-size:14px;color:#6A6F6C}
+.scrim{background:rgba(27,29,28,.45)}
+.modal{background:#fff;border-radius:10px;border:1px solid #E4E2DC;box-shadow:0 8px 24px rgba(27,29,28,.18);padding:24px;display:flex;flex-direction:column;gap:14px}
+.toast{background:#1B1D1C;color:#fff;border-radius:8px;padding:12px 16px;display:flex;gap:12px;align-items:center;font-size:14px;box-shadow:0 4px 12px rgba(27,29,28,.2)}
+.focus{outline:2px solid #2D6CDF;outline-offset:2px}
+.g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
+.g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}
+.cap{font-size:12px;color:#6A6F6C;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.input{border:1px solid #D9D6CF;border-radius:8px;padding:10px 12px;font:inherit;font-size:15px;background:#fff;color:#1B1D1C;min-height:44px;width:100%}
+.field{display:flex;flex-direction:column;gap:6px}.field label{font-size:13px;font-weight:600;color:#3A3F3C}
+.tabs{display:flex;gap:28px;border-bottom:1px solid #E4E2DC}.tab{padding:10px 0;color:#4A4F4C;font-size:15px}.tab.on{color:#1F5C45;font-weight:600;box-shadow:inset 0 -2px 0 #1F5C45}
+.step{display:flex;align-items:center;gap:10px;font-size:14px}.step i{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:12px}
+.stat{display:flex;flex-direction:column;gap:2px}.stat b{font-family:'Source Serif 4',Georgia,serif;font-size:32px;line-height:38px;font-weight:500;color:#1F5C45}
+.li{display:flex;align-items:center;gap:16px;padding:14px 20px;border-top:1px solid #EEECE7}
+.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#4A4F4C}
+@media (max-width:1000px){.side{max-width:none}.g2,.g3{grid-template-columns:minmax(0,1fr)}}
+.ico{width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex:none;background:#F1F0EB;color:#4A4F4C}
+.serif{font-family:"Source Serif 4",Georgia,serif}
+.btn.red{background:#A3271F;border-color:#A3271F;color:#fff}.btn.ghost{border-color:transparent;background:transparent;color:#1F5C45}
+.sub2{color:#4A4F4C}
+.steps{display:flex;gap:10px 28px;flex-wrap:wrap;align-items:center}
+.st{display:flex;align-items:center;gap:10px;font-size:14px}
+.st i{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:13px;font-weight:600}
+.line{width:40px;height:1px;background:#D9D6CF}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+textarea.input{line-height:23px;resize:vertical}
+.cols2m{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);gap:24px;align-items:start}
+.rd{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-top:1px solid #EEECE7;font-size:14px}.rd span{color:#6A6F6C}.rd b{text-align:right;font-weight:600}
+@media (max-width:1000px){.cols2m{grid-template-columns:minmax(0,1fr)}}
+.cols2{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,400px);gap:24px;align-items:start}
+@media (max-width:1000px){.cols2{grid-template-columns:minmax(0,1fr)}}
+</style>
+</helmet>
+<div style="max-width:1440px;margin:0 auto;padding:56px 64px 72px;display:flex;flex-direction:column;gap:32px">
+  <header style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-end;justify-content:space-between">
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:12px"><span style="width:40px;height:40px;border-radius:10px;background:#1F5C45;color:#fff;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3v18M7 21h10M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z"/></svg></span><span class="serif" style="font-size:22px;font-weight:600">Gyanam AI</span></div>
+      <h1 class="serif" style="font-size:48px;line-height:56px">Drafting studio · progress</h1>
+      <p style="margin:0;color:#4A4F4C;font-size:17px;line-height:26px;max-width:820px">Preparing the draft with Cancel, the Parameters and Precedents tabs, the template-fallback banner, engine labels and the autosave indicator.</p>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="chip warn">Template fallback is never hidden</span><span class="chip">No fake percentage</span></div>
+  </header>
+  <section class="frame" aria-label="Generation in progress">
+    <div class="bar"><span class="cap">A · Preparing the draft</span><span>Drafts / Cr. Revision 412/2026 · Mehra Traders v. State</span><span class="grow"></span><span class="chip warn">Unsaved changes</span></div>
+    <div style="padding:28px 40px 36px;display:flex;flex-direction:column;gap:18px">
+      <div class="tabs"><span class="tab on">Draft</span><span class="tab">Parameters</span><span class="tab">Precedents (5)</span></div>
+      <section class="card" style="display:flex;flex-direction:column;gap:14px;max-width:760px" role="status" aria-live="polite">
+        <h2>Preparing the draft</h2>
+        <p style="margin:0;color:#4A4F4C">Finding precedents in the corpus, then writing the 15 sections. This can take up to two minutes.</p>
+        <div style="height:6px;border-radius:999px;background:#ECEAE4;overflow:hidden"><div style="height:6px;width:36%;background:#1F5C45;border-radius:999px"></div></div>
+        <div class="meta">The server does not report progress, so no percentage is shown. The bar only shows that work is continuing.</div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="meta">Elapsed: 38 s</span><span class="grow"></span><button class="btn">Cancel</button></div>
+      </section>
+      <div class="g3" style="max-width:1100px">
+        <span class="skel" style="height:64px"></span><span class="skel" style="height:64px"></span><span class="skel" style="height:64px"></span>
+      </div>
+      <div class="bn info" style="max-width:760px"><span><b>After Cancel:</b> "Preparation cancelled. Your text is unchanged." with a Try again button. Nothing is overwritten unless you confirm "Replace the current text?"</span></div>
+    </div>
+  </section>
+
+  <div class="g2" style="align-items:start">
+    <section class="frame" aria-label="Parameters tab">
+      <div class="bar"><span class="cap">B · Parameters tab</span><span class="grow"></span><span class="meta" style="display:flex;align-items:center;gap:6px"><span class="dot"></span>Saved 2 min ago</span></div>
+      <div style="padding:24px 28px 32px;display:flex;flex-direction:column;gap:16px">
+        <div class="tabs"><span class="tab">Draft</span><span class="tab on">Parameters</span><span class="tab">Precedents (5)</span></div>
+        <p style="margin:0;color:#4A4F4C">These inputs are used the next time you prepare the draft. Changing them does not rewrite the sections.</p>
+        <div class="field"><label>Case title</label><input class="input" value="Mehra Traders v. State of Rajasthan"></div>
+        <div class="grid2">
+          <div class="field"><label>Case number</label><input class="input" value="S.B. Cr. Revision 412/2026"></div>
+          <div class="field"><label>Court</label><input class="input" value="Rajasthan High Court, Jodhpur"></div>
+        </div>
+        <div class="field"><label>Statutory provisions</label><input class="input" value="Sections 138, 139 NI Act"></div>
+        <div class="field"><label>Issues (one per line)</label><textarea class="input" rows="3">Was the cheque issued in discharge of a legally enforceable debt?
+Does the Section 139 presumption extend to the existence of the debt itself?</textarea></div>
+        <div class="field"><label>Facts <span class="chip warn" style="margin-left:6px">Required to prepare the draft</span></label><textarea class="input" rows="2" placeholder="Required"></textarea></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn pri">Prepare draft</button><span class="meta" style="align-self:center">Fill the required parameters first.</span></div>
+      </div>
+    </section>
+
+    <section class="frame" aria-label="Precedents tab">
+      <div class="bar"><span class="cap">C · Precedents tab</span></div>
+      <div style="padding:24px 28px 32px;display:flex;flex-direction:column;gap:14px">
+        <div class="tabs"><span class="tab">Draft</span><span class="tab">Parameters</span><span class="tab on">Precedents (5)</span></div>
+        <b style="font-size:15px">Retrieved precedents (5)</b>
+        <div style="border:1px solid #E4E2DC;border-radius:10px;background:#fff;overflow:hidden">
+          <div class="li" style="border-top:0"><div style="flex:1;min-width:0"><div class="t">Rangappa v. Sri Mohan</div><div class="meta">Supreme Court · (2010) 11 SCC 441</div></div><span class="chip info">Primary binding</span><span class="chip good">No adverse treatment recorded</span></div>
+          <div class="li"><div style="flex:1;min-width:0"><div class="t">Whirlpool Corporation v. Registrar of Trade Marks</div><div class="meta">Supreme Court · (1998) 8 SCC 1</div></div><span class="chip good">No adverse treatment recorded</span></div>
+          <div class="li" style="background:#FFFBFA"><div style="flex:1;min-width:0"><div class="t">Krishna Janardhan Bhat v. Dattatraya G. Hegde</div><div class="meta" style="color:#A3271F">Overruled by Rangappa. Do not rely on it.</div></div><span class="chip bad">Overruled</span></div>
+        </div>
+        <span class="meta">Each row opens its reader or source PDF. Precedents come from the bench brief and the corpus search; none are written by the model.</span>
+      </div>
+    </section>
+  </div>
+
+  <section class="frame" aria-label="Engine labels and banners">
+    <div class="bar"><span class="cap">D · Engine label and autosave variants</span><span>the banner sits above the draft text and is never dismissed</span></div>
+    <div style="padding:24px 28px 32px;display:flex;flex-direction:column;gap:16px">
+      <div class="bn warn" role="status"><span style="flex:none;margin-top:1px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3l10 18H2zM12 10v5M12 18v.5"/></svg></span><div><b>Template fallback</b><div>Template fallback: no model wrote this draft. The text is a fixed template filled with your inputs and the retrieved authorities. Read and rewrite every section before it goes for review.</div></div></div>
+      <div class="bn info" role="status"><span><b>Written by a model.</b> Written by an AI model. It can be wrong. Check every citation and every statement of fact against the record.</span></div>
+      <div class="bn warn" role="status"><span style="flex:none;margin-top:1px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3l10 18H2zM12 10v5M12 18v.5"/></svg></span><span>Section 4 looks like unedited text read from a scan (garbled characters). Check it against the original before you go further.</span><a href="Studio.dc.html" style="font-weight:600;margin-left:auto;white-space:nowrap">Go to section 4</a></div>
+      <div class="cap" style="margin-top:6px">Autosave indicator · top right of the editor</div>
+      <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:center">
+        <span class="meta">Not saved yet</span>
+        <span class="meta" style="color:#8A5A00;font-weight:600">Unsaved changes</span>
+        <span class="meta">Saving...</span>
+        <span class="meta" style="display:flex;gap:6px;align-items:center"><span class="dot"></span>Saved 2 min ago</span>
+        <span class="meta" style="color:#8A5A00;font-weight:600">Could not save · <a href="Studio.dc.html">Retry</a></span>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap"><span class="chip warn">Template fallback</span><span class="chip info">Written by a model</span><span class="chip">Draft #53</span></div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1500}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

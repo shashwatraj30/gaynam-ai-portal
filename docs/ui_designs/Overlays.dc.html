@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Overlays</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&amp;family=Noto+Sans+Devanagari:wght@400;500;600&amp;family=Noto+Serif+Devanagari:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;background:#F6F5F1;color:#1B1D1C;font-family:Inter,system-ui,sans-serif;font-size:14px;line-height:20px}
+*{box-sizing:border-box}
+a{color:#1F5C45;text-decoration:none}a:hover{color:#174634;text-decoration:underline}
+.app{display:flex;flex-wrap:wrap;min-height:100vh;background:#F6F5F1}
+.side{flex:1 1 248px;max-width:280px;background:#FBFAF7;border-right:1px solid #E4E2DC;padding:20px 14px 18px;display:flex;flex-direction:column;gap:2px}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 10px 22px;font-family:'Source Serif 4',Georgia,serif;font-size:20px;font-weight:600;color:#1B1D1C}
+.bm{width:34px;height:34px;border-radius:9px;background:#1F5C45;color:#fff;display:flex;align-items:center;justify-content:center}
+.nav{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:8px;color:#2B2F2D;font-size:15px;min-height:42px}
+.nav:hover{background:#F1F0EB;text-decoration:none;color:#1B1D1C}
+.nav.on{background:#E5EEE9;color:#1F5C45;font-weight:600}
+.nav svg{width:18px;height:18px;flex:none}
+.bdg{margin-left:auto;background:#FBEAE7;color:#A3271F;border-radius:999px;font-size:12px;padding:0 8px;font-weight:600}
+.sect{font-size:12px;color:#6A6F6C;padding:18px 12px 6px;line-height:16px}
+.me{margin-top:auto;border-top:1px solid #E4E2DC;padding:14px 8px 0;display:flex;gap:10px;align-items:center}
+.av{width:38px;height:38px;border-radius:50%;background:#E5EEE9;color:#1F5C45;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none}
+.main{flex:999 1 640px;min-width:0;display:flex;flex-direction:column}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;padding:14px 32px;border-bottom:1px solid #E4E2DC}
+.crumbs{display:flex;gap:8px;align-items:center;font-size:15px;color:#6A6F6C}.crumbs b{color:#1B1D1C;font-weight:600}
+.hist{display:inline-flex;align-items:center;gap:6px;border:1px solid #E4E2DC;background:#fff;border-radius:8px;padding:6px 12px;font-size:14px;font-weight:500;color:#1B1D1C;font-family:inherit;min-height:36px}
+.hist.on{background:#E5EEE9;border-color:#CFE0D6;color:#1F5C45}
+.grow{flex:1}
+.search{display:flex;align-items:center;gap:8px;width:280px;max-width:100%;border:1px solid #E4E2DC;background:#fff;border-radius:8px;padding:8px 12px;color:#6A6F6C;font:inherit;font-size:14px;min-height:38px}
+.kbd{margin-left:auto;font-size:11px;border:1px solid #E4E2DC;border-radius:4px;padding:0 5px}
+.fresh{display:flex;align-items:center;gap:6px;font-size:13px;color:#4A4F4C}.dot{width:8px;height:8px;border-radius:50%;background:#2E8B5E;display:inline-block}
+.lang{display:flex;border:1px solid #E4E2DC;border-radius:8px;overflow:hidden;font-size:13px}.lang span{padding:5px 10px;background:#fff}.lang span.on{background:#1B1D1C;color:#fff}
+.page{padding:28px 32px 40px;display:flex;flex-direction:column;gap:24px}
+h1{font-family:'Source Serif 4',Georgia,serif;font-weight:500;font-size:40px;line-height:48px;margin:0}
+h2{font-family:'Source Serif 4',Georgia,serif;font-weight:500;font-size:24px;line-height:32px;margin:0}
+.serif{font-family:'Source Serif 4',Georgia,serif}
+.sub{color:#4A4F4C;font-size:16px;line-height:24px;margin:6px 0 0}
+.meta{color:#6A6F6C;font-size:13px;line-height:18px}
+.lbl{font-size:12px;color:#6A6F6C;font-weight:600}
+.card{background:#fff;border:1px solid #E4E2DC;border-radius:10px;padding:24px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 10px;font-size:12px;line-height:18px;font-weight:600;background:#F1F0EB;color:#3A3F3C;white-space:nowrap}
+.good{background:#E5EEE9;color:#1F5C45}.warn{background:#FBF0D9;color:#8A5A00}.bad{background:#FBEAE7;color:#A3271F}.info{background:#E8EEF8;color:#2D4E8A}
+.btn{display:inline-flex;align-items:center;gap:8px;justify-content:center;border-radius:8px;padding:10px 16px;font-size:14px;font-weight:600;border:1px solid #E4E2DC;background:#fff;color:#1B1D1C;font-family:inherit;min-height:44px;cursor:pointer}
+.btn.pri{background:#1F5C45;border-color:#1F5C45;color:#fff}
+.t{font-weight:600;font-size:15px;line-height:22px;color:#1B1D1C}
+.cite{display:inline-flex;align-items:center;gap:4px;border-radius:6px;padding:1px 8px;font-size:13px;font-weight:600;background:#E5EEE9;color:#1F5C45}
+.cite.r{background:#FBEAE7;color:#A3271F}
+.hl{background:#F5E6B3}
+.ck{display:flex;gap:10px;padding:9px 0;border-top:1px solid #EEECE7;align-items:flex-start;font-size:14px}
+.hrow{display:flex;flex-direction:column;gap:2px;padding:9px 10px;border-radius:8px;color:#1B1D1C}
+.hrow:hover{background:#F1F0EB;text-decoration:none}
+.hrow.on{background:#E5EEE9}
+.res{display:flex;flex-direction:column;gap:8px;padding:18px 20px;border-top:1px solid #EEECE7}
+.res.on{background:#FAFBF9;box-shadow:inset 0 0 0 1px #CFE0D6}
+.skel{display:block;background:#ECEAE4;border-radius:6px}
+.bn{display:flex;gap:12px;align-items:flex-start;padding:12px 16px;border-radius:8px;border:1px solid #E4E2DC;font-size:14px;line-height:20px;background:#F1F0EB;color:#1B1D1C}
+.bn.warn{background:#FBF0D9;border-color:#EBD7A3;color:#6B4500}.bn.info{background:#E8EEF8;border-color:#C9D6EC;color:#2D4E8A}.bn.bad{background:#FBEAE7;border-color:#F0C9C3;color:#A3271F}
+.frame{background:#F6F5F1;border:1px solid #E4E2DC;border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
+.frame .bar{display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid #E4E2DC;background:#FBFAF7;font-size:14px;color:#6A6F6C}
+.scrim{background:rgba(27,29,28,.45)}
+.modal{background:#fff;border-radius:10px;border:1px solid #E4E2DC;box-shadow:0 8px 24px rgba(27,29,28,.18);padding:24px;display:flex;flex-direction:column;gap:14px}
+.toast{background:#1B1D1C;color:#fff;border-radius:8px;padding:12px 16px;display:flex;gap:12px;align-items:center;font-size:14px;box-shadow:0 4px 12px rgba(27,29,28,.2)}
+.focus{outline:2px solid #2D6CDF;outline-offset:2px}
+.g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
+.g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}
+.cap{font-size:12px;color:#6A6F6C;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.input{border:1px solid #D9D6CF;border-radius:8px;padding:10px 12px;font:inherit;font-size:15px;background:#fff;color:#1B1D1C;min-height:44px;width:100%}
+.field{display:flex;flex-direction:column;gap:6px}.field label{font-size:13px;font-weight:600;color:#3A3F3C}
+.tabs{display:flex;gap:28px;border-bottom:1px solid #E4E2DC}.tab{padding:10px 0;color:#4A4F4C;font-size:15px}.tab.on{color:#1F5C45;font-weight:600;box-shadow:inset 0 -2px 0 #1F5C45}
+.step{display:flex;align-items:center;gap:10px;font-size:14px}.step i{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:12px}
+.stat{display:flex;flex-direction:column;gap:2px}.stat b{font-family:'Source Serif 4',Georgia,serif;font-size:32px;line-height:38px;font-weight:500;color:#1F5C45}
+.li{display:flex;align-items:center;gap:16px;padding:14px 20px;border-top:1px solid #EEECE7}
+.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#4A4F4C}
+@media (max-width:1000px){.side{max-width:none}.g2,.g3{grid-template-columns:minmax(0,1fr)}}
+.ico{width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex:none;background:#F1F0EB;color:#4A4F4C}
+.serif{font-family:"Source Serif 4",Georgia,serif}
+.btn.red{background:#A3271F;border-color:#A3271F;color:#fff}.btn.ghost{border-color:transparent;background:transparent;color:#1F5C45}
+.sub2{color:#4A4F4C}
+.steps{display:flex;gap:10px 28px;flex-wrap:wrap;align-items:center}
+.st{display:flex;align-items:center;gap:10px;font-size:14px}
+.st i{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:13px;font-weight:600}
+.line{width:40px;height:1px;background:#D9D6CF}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+textarea.input{line-height:23px;resize:vertical}
+.cols2m{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);gap:24px;align-items:start}
+.rd{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-top:1px solid #EEECE7;font-size:14px}.rd span{color:#6A6F6C}.rd b{text-align:right;font-weight:600}
+@media (max-width:1000px){.cols2m{grid-template-columns:minmax(0,1fr)}}
+.cols2{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,400px);gap:24px;align-items:start}
+@media (max-width:1000px){.cols2{grid-template-columns:minmax(0,1fr)}}
+</style>
+</helmet>
+<div style="max-width:1440px;margin:0 auto;padding:56px 64px 72px;display:flex;flex-direction:column;gap:32px">
+  <header style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-end;justify-content:space-between">
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:12px"><span style="width:40px;height:40px;border-radius:10px;background:#1F5C45;color:#fff;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3v18M7 21h10M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z"/></svg></span><span class="serif" style="font-size:22px;font-weight:600">Gyanam AI</span></div>
+      <h1 class="serif" style="font-size:48px;line-height:56px">Overlays</h1>
+      <p style="margin:0;color:#4A4F4C;font-size:17px;line-height:26px;max-width:820px">The Ctrl K palette, user menu, confirm dialog, toast and the 'changed elsewhere' (409) dialog. Layers follow the z-index scale: drawer 40, modal 50, toast 60. Focus is trapped in a dialog and returns to the control that opened it.</p>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="chip info">Esc closes</span><span class="chip">Focus ring #2D6CDF</span><span class="chip">Overlay rgba(27,29,28,.45)</span></div>
+  </header>
+  <div class="g2">
+    <section class="frame" style="min-height:520px;position:relative" aria-label="Ctrl K palette">
+      <div class="bar"><span class="cap">Ctrl K palette</span><span>opens over any page, focus moves to the field, Esc closes</span></div>
+      <div class="scrim" style="flex:1;padding:36px 28px;display:flex;justify-content:center;align-items:flex-start">
+        <div class="modal" style="width:100%;max-width:560px;padding:0;gap:0;overflow:hidden" role="dialog" aria-label="Search or jump to">
+          <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid #E4E2DC"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6A6F6C" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><span style="flex:1;font-size:16px">section 139</span><span class="kbd" style="margin-left:0">Esc</span></div>
+          <div style="padding:8px 8px 4px"><div class="lbl" style="padding:6px 10px">Judgments</div>
+            <div class="hrow on focus" style="flex-direction:row;align-items:center;gap:12px;outline-offset:-2px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F5C45" stroke-width="1.6" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/></svg><span style="flex:1"><b style="font-size:14px;color:#1F5C45">Rangappa v. Sri Mohan</b><br><span class="meta">Supreme Court · 7 May 2010 · (2010) 11 SCC 441</span></span><span class="kbd" style="margin-left:0">Enter</span></div>
+            <div class="hrow" style="flex-direction:row;align-items:center;gap:12px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6A6F6C" stroke-width="1.6" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/></svg><span><span style="font-size:14px">Krishna Janardhan Bhat v. Dattatraya G. Hegde</span><br><span class="meta">Supreme Court · (2008) 4 SCC 54 · overruled</span></span></div>
+            <div class="lbl" style="padding:10px 10px 6px">Go to</div>
+            <div class="hrow" style="flex-direction:row;align-items:center;gap:12px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6A6F6C" stroke-width="1.6" aria-hidden="true"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/></svg><span style="font-size:14px">Research</span></div>
+            <div class="hrow" style="flex-direction:row;align-items:center;gap:12px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6A6F6C" stroke-width="1.6" aria-hidden="true"><path d="M3 6h6l2 2h10v11H3z"/></svg><span style="font-size:14px">Matters</span></div>
+            <div class="lbl" style="padding:10px 10px 6px">Actions</div>
+            <div class="hrow" style="flex-direction:row;align-items:center;gap:12px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6A6F6C" stroke-width="1.6" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span style="font-size:14px">Check a citation</span></div>
+          </div>
+          <div style="padding:10px 18px;border-top:1px solid #E4E2DC;background:#FBFAF7;display:flex;gap:16px" class="meta"><span>Up / Down to move</span><span>Enter to open</span><span>Shows only pages your role can open</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="frame" style="min-height:520px" aria-label="User menu">
+      <div class="bar"><span class="cap">User menu</span><span>top-right avatar, keyboard operable</span></div>
+      <div style="flex:1;padding:28px;display:flex;justify-content:flex-end;align-items:flex-start;gap:20px">
+        <span class="meta" style="flex:1;align-self:center;max-width:300px">Sign out ends the session on this device. The sign-out is written to the audit trail.</span>
+        <div class="modal" style="width:300px;padding:8px;gap:0" role="menu">
+          <div style="display:flex;gap:10px;align-items:center;padding:12px"><span class="av">RS</span><div><div class="t" style="font-size:14px">Justice R.K. Sharma</div><div class="meta">Judicial user · HC-RAJ-JODH-882</div></div></div>
+          <div style="height:1px;background:#EEECE7;margin:4px 0"></div>
+          <div class="hrow on" role="menuitem" style="flex-direction:row;gap:12px;align-items:center"><span style="font-size:14px">Settings</span></div>
+          <div class="hrow" role="menuitem" style="flex-direction:row;gap:12px;align-items:center"><span style="font-size:14px">Language</span><span class="lang" style="margin-left:auto"><span class="on">EN</span><span>HI</span></span></div>
+          <div class="hrow" role="menuitem" style="flex-direction:row;gap:12px;align-items:center"><span style="font-size:14px">Send feedback</span></div>
+          <div style="height:1px;background:#EEECE7;margin:4px 0"></div>
+          <div class="hrow" role="menuitem" style="flex-direction:row;gap:12px;align-items:center"><span style="font-size:14px">Sign out</span></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="g2">
+    <section class="frame" aria-label="Confirm dialog">
+      <div class="bar"><span class="cap">Confirm dialog</span><span>suspend, discard, approve · focus starts on the safe button</span></div>
+      <div class="scrim" style="padding:36px 28px;display:flex;justify-content:center">
+        <div class="modal" style="width:100%;max-width:460px" role="alertdialog" aria-labelledby="cd1" aria-describedby="cd2">
+          <h2 id="cd1" style="font-size:22px;line-height:30px">Suspend Adv. Siddharth Mathur?</h2>
+          <p id="cd2" style="margin:0;color:#4A4F4C;font-size:15px;line-height:24px">They will be marked suspended and the change is written to the audit trail. It lasts until the server restarts.</p>
+          <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:6px"><button class="btn focus">Cancel</button><button class="btn pri">Suspend</button></div>
+        </div>
+      </div>
+      <div style="padding:16px 28px;display:grid;grid-template-columns:1fr 1fr;gap:16px;background:#FBFAF7;border-top:1px solid #E4E2DC">
+        <div class="modal" style="padding:18px;gap:8px"><b style="font-size:15px">Discard unsaved changes?</b><span class="meta">Your edits to this section will be lost.</span><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" style="min-height:36px">Keep editing</button><button class="btn" style="min-height:36px">Discard</button></div></div>
+        <div class="modal" style="padding:18px;gap:8px"><b style="font-size:15px">Approve and sign this draft?</b><span class="meta">The only red button on the page. Approval is recorded in the ledger.</span><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" style="min-height:36px">Cancel</button><button class="btn red" style="min-height:36px">Approve and sign</button></div></div>
+      </div>
+    </section>
+
+    <section class="frame" aria-label="409 dialog">
+      <div class="bar"><span class="cap">Changed elsewhere (409)</span><span>shown when a save finds a newer version</span></div>
+      <div class="scrim" style="flex:1;padding:36px 28px;display:flex;justify-content:center;align-items:flex-start">
+        <div class="modal" style="width:100%;max-width:500px" role="alertdialog" aria-labelledby="cd3">
+          <span class="chip warn" style="align-self:flex-start">Changed elsewhere</span>
+          <h2 id="cd3" style="font-size:22px;line-height:30px">This draft was changed elsewhere</h2>
+          <p style="margin:0;color:#4A4F4C;font-size:15px;line-height:24px">Someone saved a newer version while you were editing. You can keep your version (it will replace theirs) or reload theirs (your unsaved edits are lost).</p>
+          <div style="border:1px solid #E4E2DC;border-radius:8px;padding:12px 14px;display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;background:#FAFAF7">
+            <div><div class="lbl">Your version</div><div>Edited 2 min ago</div></div>
+            <div><div class="lbl">Newer saved version</div><div>Saved just now</div></div>
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:6px"><button class="btn focus">Reload theirs</button><button class="btn">Keep mine</button></div>
+          <span class="meta">The choice is written to the audit trail either way.</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <section class="card" style="display:flex;flex-direction:column;gap:18px">
+    <div class="cap">Toast · bottom right, 4 seconds, role="status", never the only record of an action</div>
+    <div style="display:flex;flex-wrap:wrap;gap:16px">
+      <div class="toast" role="status"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9FD3BA" stroke-width="2.2" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg><span>Citation copied</span></div>
+      <div class="toast" role="status"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9FD3BA" stroke-width="2.2" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg><span>Adv. Siddharth Mathur suspended until restart</span><button class="btn ghost" style="min-height:30px;padding:2px 8px;font-size:13px;color:#fff">Undo</button></div>
+      <div class="toast" role="alert"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F0C36A" stroke-width="2" aria-hidden="true"><path d="M12 3l10 18H2zM12 10v5M12 18v.5"/></svg><span>The change could not be saved.</span><button class="btn ghost" style="min-height:30px;padding:2px 8px;font-size:13px;color:#fff">Retry</button></div>
+    </div>
+    <span class="meta">Toasts are always ink with a small icon (amber for a failed save). Red stays reserved for law changes and signing.</span>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1500}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

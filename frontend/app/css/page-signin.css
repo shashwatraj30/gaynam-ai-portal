@@ -1,0 +1,31 @@
+.signin { display: grid; grid-template-columns: minmax(280px, 5fr) minmax(0, 7fr); min-height: 100vh; background: var(--bg); }
+.signin__brand { background: var(--primary); color: var(--on-primary); padding: var(--s12) var(--s10); display: flex; flex-direction: column; gap: var(--s4); justify-content: center; }
+.signin__seal { width: 72px; height: 72px; border-radius: var(--r-pill); background: var(--surface); padding: var(--s1); }
+.signin__name { font-family: var(--font-serif); font-size: var(--fs-h2); line-height: var(--lh-h2); font-weight: 600; }
+.signin__tagline { font-family: var(--font-serif); font-size: calc(20px * var(--fz)); line-height: calc(30px * var(--fz)); }
+.signin__audience { opacity: .9; }
+.signin__points { list-style: none; padding: 0; margin: var(--s4) 0 0; display: flex; flex-direction: column; gap: var(--s2); }
+.signin__points li { padding-left: var(--s5); position: relative; }
+.signin__points li::before { content: ""; position: absolute; left: 0; top: 9px; width: 8px; height: 8px; border-radius: var(--r-pill); background: var(--on-primary); }
+.signin__panel { padding: var(--s12) var(--s10); max-width: 720px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: var(--s4); justify-content: center; }
+.signin__title { font-family: var(--font-serif); font-size: var(--fs-h1); line-height: var(--lh-h1); font-weight: 500; }
+.signin__lede { color: var(--ink-2); }
+.signin__group { display: flex; flex-direction: column; gap: var(--s2); }
+.signin__card { position: relative; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: var(--s3); align-items: center; padding: var(--s3) var(--s4); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); cursor: pointer; min-height: 44px; }
+.signin__card:hover { background: var(--surface-2); }
+.signin__card:has(.signin__radio:checked) { border-color: var(--primary); background: var(--primary-tint); }
+.signin__card:has(.signin__radio:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.signin__radio { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.signin__avatar { width: 40px; height: 40px; border-radius: var(--r-pill); background: var(--primary-tint); color: var(--primary); display: inline-flex; align-items: center; justify-content: center; font-weight: 600; }
+.signin__who { display: flex; flex-direction: column; min-width: 0; }
+.signin__person { font-weight: 600; font-size: var(--fs-body); }
+.signin__role { font-size: var(--fs-chip); line-height: var(--lh-chip); color: var(--ink-2); background: var(--surface-2); border-radius: var(--r-pill); padding: 2px var(--s2); }
+.signin__actions { display: flex; flex-direction: column; gap: var(--s2); align-items: flex-start; margin-top: var(--s2); }
+@media (max-width: 768px) {
+  .signin { grid-template-columns: minmax(0, 1fr); }
+  .signin__brand { padding: var(--s6) var(--s4); }
+  .signin__panel { padding: var(--s6) var(--s4); }
+  .signin__card { grid-template-columns: 40px minmax(0, 1fr); }
+  .signin__role { grid-column: 2; justify-self: start; }
+  .signin__actions .g-btn { width: 100%; }
+}

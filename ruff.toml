@@ -1,0 +1,6 @@
+# Minimal gate: syntax errors and undefined names only. Widen as the legacy code is cleaned up.
+line-length = 140
+extend-exclude = ["frontend", "scripts"]
+
+[lint]
+select = ["E9", "F63", "F7", "F82"]

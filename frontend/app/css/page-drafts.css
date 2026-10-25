@@ -1,0 +1,6 @@
+/* Drafts list. Tokens only. */
+.drafts__body { min-width: 0; }
+.drafts__case { display: flex; flex-direction: column; gap: 2px; min-width: 180px; }
+.drafts__name { font-weight: 600; color: var(--ink); }
+.drafts .g-field { max-width: 420px; }
+.drafts .g-tabs { flex-wrap: wrap; }

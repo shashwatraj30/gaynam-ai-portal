@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gyanam AI design system</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&amp;display=swap">
+<style>
+body{margin:0;background:#F6F5F1;color:#1B1D1C;font-family:Inter,system-ui,sans-serif;font-size:14px;line-height:20px}
+*{box-sizing:border-box}
+a{color:#1F5C45;text-decoration:none}a:hover{color:#174634;text-decoration:underline}
+.serif{font-family:'Source Serif 4',Georgia,serif}
+.card{background:#fff;border:1px solid #E4E2DC;border-radius:10px;padding:24px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 10px;font-size:12px;line-height:18px;font-weight:600;background:#F1F0EB;color:#3A3F3C;white-space:nowrap}
+.good{background:#E5EEE9;color:#1F5C45}.warn{background:#FBF0D9;color:#8A5A00}.bad{background:#FBEAE7;color:#A3271F}.info{background:#E8EEF8;color:#2D4E8A}
+.btn{display:inline-flex;align-items:center;gap:8px;justify-content:center;border-radius:8px;padding:10px 16px;font-size:14px;font-weight:600;border:1px solid #E4E2DC;background:#fff;color:#1B1D1C;font-family:inherit;min-height:44px;cursor:pointer}
+.btn.pri{background:#1F5C45;border-color:#1F5C45;color:#fff}.btn.red{background:#A3271F;border-color:#A3271F;color:#fff}.btn.ghost{border-color:transparent;background:transparent;color:#1F5C45}
+.cite{display:inline-flex;align-items:center;gap:4px;border-radius:6px;padding:1px 8px;font-size:13px;font-weight:600;background:#E5EEE9;color:#1F5C45}
+.cite.w{background:#FBF0D9;color:#8A5A00}.cite.r{background:#FBEAE7;color:#A3271F}
+.sw{display:flex;flex-direction:column;gap:8px;min-width:150px}
+.sw i{display:block;height:64px;border-radius:8px;border:1px solid #E4E2DC}
+.lbl{font-size:12px;color:#6A6F6C;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.li{display:flex;align-items:center;gap:16px;padding:16px 20px;border-top:1px solid #EEECE7}
+.ico{width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex:none;background:#F1F0EB;color:#4A4F4C}
+.tabs{display:flex;gap:28px;border-bottom:1px solid #E4E2DC}.tab{padding:10px 0;color:#4A4F4C;font-size:15px}.tab.on{color:#1F5C45;font-weight:600;box-shadow:inset 0 -2px 0 #1F5C45}
+.step{display:flex;align-items:center;gap:10px;font-size:14px}.step i{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-style:normal}
+.field{display:flex;flex-direction:column;gap:6px}.field label{font-size:13px;font-weight:600;color:#3A3F3C}
+.input{border:1px solid #D9D6CF;border-radius:8px;padding:10px 12px;font:inherit;font-size:15px;background:#fff;color:#1B1D1C;min-height:44px}
+.hl{background:#F5E6B3}
+</style>
+</helmet>
+<div style="max-width: 1440px; margin: 0 auto; padding: 56px 64px 72px; display: flex; flex-direction: column; gap: 40px">
+  <header style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-end; justify-content: space-between">
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <span style="width: 40px; height: 40px; border-radius: 10px; background: #1F5C45; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3v18M7 21h10M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z"/></svg></span>
+        <span class="serif" style="font-size: 22px; font-weight: 600">Gyanam AI</span>
+      </div>
+      <h1 class="serif" style="margin: 0; font-size: 48px; line-height: 56px; font-weight: 500">Design system</h1>
+      <p style="margin: 0; color: #4A4F4C; font-size: 17px; line-height: 26px; max-width: 760px">One set of tokens and components for every page of the portal. Built in Phase P1 as <code>frontend/app/css/tokens.css</code> and the Kit page <code>#/_kit</code>, before any page is rebuilt.</p>
+    </div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap"><span class="chip good">Calm</span><span class="chip">Judge-first</span><span class="chip info">Source always visible</span></div>
+  </header>
+
+  <section class="card" style="display: flex; flex-direction: column; gap: 20px">
+    <div class="lbl">Colour</div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px">
+      <div class="sw"><i style="background: #F6F5F1"></i><b>Ground</b><span style="color: #6A6F6C">--bg #F6F5F1</span></div>
+      <div class="sw"><i style="background: #FFFFFF"></i><b>Surface</b><span style="color: #6A6F6C">--surface #FFFFFF</span></div>
+      <div class="sw"><i style="background: #F1F0EB"></i><b>Quiet fill</b><span style="color: #6A6F6C">--surface-2 #F1F0EB</span></div>
+      <div class="sw"><i style="background: #1B1D1C"></i><b>Ink</b><span style="color: #6A6F6C">--ink #1B1D1C</span></div>
+      <div class="sw"><i style="background: #1F5C45"></i><b>Primary · verified</b><span style="color: #6A6F6C">--primary #1F5C45</span></div>
+      <div class="sw"><i style="background: #A3271F"></i><b>Law changed · sign</b><span style="color: #6A6F6C">--danger #A3271F</span></div>
+      <div class="sw"><i style="background: #8A5A00"></i><b>Attention</b><span style="color: #6A6F6C">--warn #8A5A00</span></div>
+      <div class="sw"><i style="background: #2D4E8A"></i><b>Statute · info</b><span style="color: #6A6F6C">--info #2D4E8A</span></div>
+      <div class="sw"><i style="background: #F5E6B3"></i><b>Quoted words</b><span style="color: #6A6F6C">--highlight #F5E6B3</span></div>
+    </div>
+  </section>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 24px">
+    <section class="card" style="display: flex; flex-direction: column; gap: 16px">
+      <div class="lbl">Type</div>
+      <div class="serif" style="font-size: 40px; line-height: 48px; font-weight: 500">Rangappa v. Sri Mohan</div>
+      <div style="color: #6A6F6C">H1 · Source Serif 4 · 40/48 · page titles and cause titles</div>
+      <div class="serif" style="font-size: 24px; line-height: 32px; font-weight: 500">Your matters</div>
+      <div style="color: #6A6F6C">H2 · Source Serif 4 · 24/32 · card and section titles</div>
+      <div class="serif" style="font-size: 18px; line-height: 32px">The presumption mandated by Section 139 of the NI Act includes the existence of a legally enforceable debt or liability.</div>
+      <div style="color: #6A6F6C">Reading · Source Serif 4 · 18/32 · judgment paragraphs and draft text</div>
+      <div style="font-size: 15px; line-height: 24px">Draft judgment verified · 31 of 31 citations found in the corpus</div>
+      <div style="color: #6A6F6C">Body · Inter · 15/24 · everything else; meta 13/18, chips 12/18</div>
+    </section>
+    <section class="card" style="display: flex; flex-direction: column; gap: 20px">
+      <div class="lbl">Buttons</div>
+      <div style="display: flex; gap: 12px; flex-wrap: wrap">
+        <button class="btn pri">Prepare draft</button>
+        <button class="btn">Open judgment</button>
+        <button class="btn ghost">See all research</button>
+        <button class="btn red"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Approve and sign</button>
+      </div>
+      <div style="color: #6A6F6C">One primary per page. Red only for signing. Verbs on buttons. Minimum 44 px tall.</div>
+      <div class="lbl">Status chips</div>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap">
+        <span class="chip good"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>No adverse treatment</span>
+        <span class="chip bad">Overruled</span><span class="chip bad">Ready to sign</span>
+        <span class="chip warn">Distinguished</span><span class="chip warn">Needs a change</span>
+        <span class="chip good">Drafting</span><span class="chip info">Confirm issues</span><span class="chip info">Statute</span><span class="chip">Signed</span>
+      </div>
+      <div class="lbl">Citation chips (inline in text)</div>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center">
+        <span class="cite">✓ SC · Rangappa (2010) 11 SCC 441</span>
+        <span class="cite w">Distinguished · Whirlpool (1998) 8 SCC 1</span>
+        <span class="cite r">Overruled · K. J. Bhat (2008) 4 SCC 54</span>
+      </div>
+    </section>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 24px">
+    <section class="card" style="padding: 0; overflow: hidden">
+      <div style="padding: 20px 20px 8px" class="lbl">List row · matters, results, alerts</div>
+      <div class="li"><span class="ico" style="background: #FBEAE7; color: #A3271F"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="9" r="5"/><path d="M9 13l-2 8 5-3 5 3-2-8"/></svg></span><div style="flex: 1; min-width: 0"><div style="font-weight: 600; font-size: 15px">FIR No. 06/17 · State of West Bengal v. Bilt…</div><div style="color: #6A6F6C">Draft verified · Court of Addl. CJM, Barrackpore</div></div><span class="chip bad">Ready to sign</span><span style="color: #6A6F6C; width: 72px; text-align: right">14 Oct</span></div>
+      <div class="li"><span class="ico" style="background: #E5EEE9; color: #1F5C45"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></span><div style="flex: 1; min-width: 0"><div style="font-weight: 600; font-size: 15px">Criminal Appeal 333/1987 · Balbir v. State of Haryana</div><div style="color: #6A6F6C">Draft sections being prepared</div></div><span class="chip good">Drafting</span><span style="color: #6A6F6C; width: 72px; text-align: right">16 Oct</span></div>
+    </section>
+    <section class="card" style="display: flex; flex-direction: column; gap: 18px">
+      <div class="lbl">Tabs, stepper, inputs</div>
+      <div class="tabs"><span class="tab">Overview</span><span class="tab">Documents (4)</span><span class="tab">Drafts (2)</span><span class="tab on">History</span></div>
+      <div style="display: flex; gap: 18px; flex-wrap: wrap">
+        <span class="step"><i style="background: #1F5C45; color: #fff">✓</i><b style="color: #1F5C45">Issues confirmed</b></span>
+        <span class="step"><i style="background: #1F5C45; color: #fff">✓</i><b style="color: #1F5C45">Draft prepared</b></span>
+        <span class="step"><i style="border: 1.5px solid #B9B5AC"></i><span style="color: #6A6F6C">Bench approval</span></span>
+      </div>
+      <div class="field"><label for="dsq">Ask a question about the law</label><input id="dsq" class="input" value="Is a Section 138 complaint within time if the notice was returned unclaimed?"></div>
+    </section>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px">
+    <section class="card" style="display: flex; flex-direction: column; gap: 6px">
+      <div class="lbl" style="margin-bottom: 8px">Stat tile</div>
+      <div class="serif" style="font-size: 36px; line-height: 40px; color: #1F5C45">1,18,096</div>
+      <div style="color: #4A4F4C">Judgments in the corpus · real value from /api/status</div>
+    </section>
+    <section class="card" style="display: flex; flex-direction: column; gap: 4px">
+      <div class="lbl" style="margin-bottom: 8px">Check list</div>
+      <div style="display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid #EEECE7"><span style="color: #1F5C45">✓</span>Found in the corpus</div>
+      <div style="display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid #EEECE7"><span style="color: #1F5C45">✓</span>Not overruled as of today</div>
+      <div style="display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid #EEECE7; color: #6A6F6C"><span>○</span>Quote matches paragraph · coming later</div>
+    </section>
+    <section class="card" style="display: flex; flex-direction: column; gap: 10px">
+      <div class="lbl" style="margin-bottom: 8px">Source paragraph</div>
+      <div class="serif" style="font-size: 17px; line-height: 30px">… once the execution of the cheque is admitted, <span class="hl">the burden shifts to the accused to rebut the presumption</span> by raising a probable defence …</div>
+      <div style="color: #6A6F6C">Rangappa v. Sri Mohan · (2010) 11 SCC 441</div>
+    </section>
+  </div>
+
+  <section class="card" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px">
+    <div style="display: flex; flex-direction: column; gap: 8px"><div class="lbl">Layout</div><div>Sidebar 264 px · top bar 64 px · page gutter 40 · card padding 24 · gap 24. Work pages use three columns: list · work · source.</div></div>
+    <div style="display: flex; flex-direction: column; gap: 8px"><div class="lbl">Shape</div><div>Cards radius 10, inputs and buttons 8, chips full. 1 px #E4E2DC border plus a 2 px soft shadow. No gradients, glows or edge stripes.</div></div>
+    <div style="display: flex; flex-direction: column; gap: 8px"><div class="lbl">Every page has</div><div>Breadcrumb, a History button, Ctrl K search, a corpus freshness dot, EN / HI. Loading, empty, error and data states.</div></div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1560}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

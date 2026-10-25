@@ -1,0 +1,46 @@
+/* Matters list and Matter page. Tokens only. */
+.mx-tools { display: flex; flex-wrap: wrap; gap: var(--s3); align-items: center; justify-content: space-between; }
+.mx-search { flex: 1 1 260px; max-width: 420px; }
+.mx-filters { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.mx-pill { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 6px var(--s3); border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--surface); color: var(--ink-2); font: 500 var(--fs-ui)/var(--lh-ui) var(--font-sans); cursor: pointer; }
+.mx-pill:hover { background: var(--surface-2); }
+.mx-pill:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.mx-pill[aria-pressed="true"] { background: var(--primary-tint); border-color: var(--primary); color: var(--primary); font-weight: 600; }
+.mx-pill__n { font-weight: 600; }
+.mx-count { color: var(--muted); font-size: var(--fs-meta); line-height: var(--lh-meta); }
+
+.mx-list { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
+.mx-head, .mx-item { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr) minmax(0, 1.6fr) 72px minmax(0, 1.2fr); gap: var(--s4); align-items: center; padding: var(--s3) var(--s5); }
+.mx-head { background: var(--surface-2); color: var(--muted); font: 600 var(--fs-meta)/var(--lh-meta) var(--font-sans); border-bottom: 1px solid var(--line); }
+.mx-li + .mx-li { border-top: 1px solid var(--line); }
+.mx-item { color: var(--ink); text-decoration: none; min-height: 64px; }
+.mx-item:hover { background: var(--surface-2); text-decoration: none; }
+.mx-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.mx-case { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mx-case__t { font-weight: 600; overflow-wrap: anywhere; }
+.mx-case__s { color: var(--ink-2); font-size: var(--fs-meta); line-height: var(--lh-meta); overflow-wrap: anywhere; }
+.mx-cell { min-width: 0; overflow-wrap: anywhere; }
+.mx-num { text-align: right; font-variant-numeric: tabular-nums; }
+.mx-lbl { display: none; color: var(--muted); font-size: var(--fs-meta); }
+.mx-foot { color: var(--muted); font-size: var(--fs-meta); line-height: var(--lh-meta); }
+
+@media (max-width: 768px) {
+  .mx-head { display: none; }
+  .mx-item { grid-template-columns: minmax(0, 1fr) auto; gap: var(--s2) var(--s3); padding: var(--s4); }
+  .mx-case { grid-column: 1 / -1; }
+  .mx-cell { grid-column: 1 / -1; display: flex; gap: var(--s2); align-items: baseline; }
+  .mx-num { text-align: left; }
+  .mx-lbl { display: inline; }
+}
+
+/* Matter page */
+.mt-sub { color: var(--ink-2); margin-top: 6px; overflow-wrap: anywhere; }
+.mt-chips { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; margin-top: var(--s3); }
+.mt-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: var(--s4); }
+.mt-panel { display: flex; flex-direction: column; gap: var(--s5); min-width: 0; }
+.mt-meta { color: var(--muted); font-size: var(--fs-meta); line-height: var(--lh-meta); }
+.mt-day { font: 600 var(--fs-ui)/var(--lh-ui) var(--font-sans); color: var(--ink-2); margin: var(--s4) 0 var(--s2); }
+.mt-day:first-child { margin-top: 0; }
+.mt-nodata { color: var(--muted); font-style: italic; }
+.mt-actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.mt-drawer { display: flex; flex-direction: column; gap: var(--s4); }

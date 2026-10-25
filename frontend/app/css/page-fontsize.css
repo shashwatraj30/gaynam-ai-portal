@@ -1,0 +1,27 @@
+/* Text size preference, applied app-wide via <html data-fontsize="small|large|xlarge">. Overrides the type tokens only. */
+html[data-fontsize="small"] {
+  --fz: 0.9;
+  --fs-h1: 36px; --lh-h1: 43px; --fs-h2: 22px; --lh-h2: 29px; --fs-read: 16px; --lh-read: 29px;
+  --fs-body: 14px; --lh-body: 22px; --fs-ui: 13px; --lh-ui: 18px; --fs-meta: 12px; --lh-meta: 16px; --fs-chip: 11px; --lh-chip: 16px;
+}
+html[data-fontsize="large"] {
+  --fz: 1.15;
+  --fs-h1: 46px; --lh-h1: 55px; --fs-h2: 28px; --lh-h2: 37px; --fs-read: 21px; --lh-read: 37px;
+  --fs-body: 17px; --lh-body: 28px; --fs-ui: 16px; --lh-ui: 23px; --fs-meta: 15px; --lh-meta: 21px; --fs-chip: 14px; --lh-chip: 21px;
+}
+html[data-fontsize="xlarge"] {
+  --fz: 1.3;
+  --fs-h1: 52px; --lh-h1: 62px; --fs-h2: 31px; --lh-h2: 42px; --fs-read: 23px; --lh-read: 42px;
+  --fs-body: 20px; --lh-body: 31px; --fs-ui: 18px; --lh-ui: 26px; --fs-meta: 17px; --lh-meta: 23px; --fs-chip: 16px; --lh-chip: 23px;
+}
+@media (max-width: 768px) {
+  html[data-fontsize="small"] { --fs-h1: 27px; --lh-h1: 34px; }
+  html[data-fontsize="large"] { --fs-h1: 35px; --lh-h1: 44px; }
+  html[data-fontsize="xlarge"] { --fs-h1: 39px; --lh-h1: 49px; }
+}
+/* Topbar A- / A+ control */
+.g-fontsize { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.g-fontsize__btn { border: 0; background: var(--surface); color: var(--ink); padding: 6px 10px; min-height: 34px; min-width: 34px; font-size: var(--fs-meta); font-weight: 600; cursor: pointer; }
+.g-fontsize__btn + .g-fontsize__btn { border-left: 1px solid var(--line); }
+.g-fontsize__btn:disabled { color: var(--muted); cursor: default; }
+.g-fontsize__btn:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }

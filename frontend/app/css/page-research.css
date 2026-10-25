@@ -1,0 +1,55 @@
+/* Research page: three columns (past questions, results, source + bench brief). */
+.rs-cols { display: grid; grid-template-columns: minmax(200px, 260px) minmax(0, 1fr) minmax(280px, 400px); gap: var(--s5); align-items: start; }
+.rs-left, .rs-mid, .rs-side, .rs-right, .rs-tray { display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
+.rs-side { gap: var(--s4); }
+.rs-grp { margin: var(--s2) 0 0; font: 600 var(--fs-chip)/var(--lh-chip) var(--font-sans); color: var(--muted); text-transform: none; }
+.rs-hist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.rs-hist__btn { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left; padding: var(--s2) var(--s3); border: 0; border-radius: var(--r-md); background: transparent; color: var(--ink); font: inherit; cursor: pointer; min-height: 44px; }
+.rs-hist__btn:hover { background: var(--surface-2); }
+.rs-hist__q { font-size: var(--fs-ui); line-height: var(--lh-ui); overflow-wrap: anywhere; }
+.rs-hist__m { font-size: var(--fs-meta); color: var(--muted); }
+.rs-ask { display: flex; flex-direction: column; gap: var(--s4); padding: var(--s5); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow); }
+.rs-ask__row { display: flex; flex-wrap: wrap; gap: var(--s3); align-items: flex-end; }
+.rs-ask__row > .g-field { flex: 1 1 100%; min-width: 0; } /* the question gets its own full-width row; Search/Filters sit under it */
+.rs-ask .g-field__label { font-size: var(--fs-ui); line-height: var(--lh-ui); }
+.rs-ask .g-input[name="q"] { min-height: 52px; font-size: calc(17px * var(--fz)); }
+.rs-ask__row .g-btn { min-height: 52px; }
+/* Chips (status, bench label) may be long: let them wrap inside the card instead of running over its edge. */
+.rs-res__top .g-chip { white-space: normal; max-width: 100%; text-align: left; }
+.rs-filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--s3); padding: var(--s4); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); }
+.rs-filters[hidden] { display: none; }
+.rs-count { margin: 0; color: var(--ink-2); font-size: var(--fs-ui); }
+.rs-results { display: flex; flex-direction: column; gap: var(--s3); }
+.rs-samples { display: flex; flex-wrap: wrap; gap: var(--s2); justify-content: center; }
+.rs-res { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s5); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow); }
+.rs-res--on { border-color: var(--primary); background: var(--primary-tint); }
+.rs-res--bad { border-color: var(--danger); }
+.rs-res__top { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.rs-res__title { margin: 0; font: 500 calc(20px * var(--fz))/calc(28px * var(--fz)) var(--font-serif); }
+.rs-res__sel { all: unset; cursor: pointer; display: block; overflow-wrap: anywhere; color: var(--ink); }
+.rs-res__sel:hover { text-decoration: underline; }
+.rs-res__sel:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+.rs-res__meta, .rs-res__cite { margin: 0; color: var(--muted); font-size: var(--fs-meta); line-height: var(--lh-meta); overflow-wrap: anywhere; }
+.rs-res__ratio { margin: 0; font-family: var(--font-serif); font-size: calc(16px * var(--fz)); line-height: calc(26px * var(--fz)); color: var(--ink-2); }
+.rs-src { display: flex; flex-direction: column; gap: var(--s3); }
+.rs-brief { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s2); }
+.rs-brief li { display: flex; justify-content: space-between; gap: var(--s2); align-items: flex-start; font-size: var(--fs-ui); }
+.rs-brief__t { overflow-wrap: anywhere; }
+.rs-brief__c { color: var(--muted); }
+.rs-brief__act { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s3); }
+.rs-x { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; border: 0; background: transparent; color: var(--muted); cursor: pointer; border-radius: var(--r-md); }
+.rs-x:hover { background: var(--surface-2); color: var(--ink); }
+
+/* The sidebar takes ~250px of the viewport, so the 3-column layout needs a wide screen; below that the
+   past-questions list moves under the source panel and results get the room. */
+.rs-left { grid-area: left; } .rs-mid { grid-area: mid; } .rs-side { grid-area: side; }
+.rs-cols { grid-template-areas: "left mid side"; }
+@media (max-width: 1680px) {
+  .rs-cols { grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); grid-template-areas: "mid side" "mid left"; }
+}
+@media (max-width: 1180px) {
+  .rs-cols { grid-template-columns: minmax(0, 1fr); grid-template-areas: "mid" "side" "left"; }
+}
+@media (max-width: 480px) {
+  .rs-ask, .rs-res { padding: var(--s4); }
+}

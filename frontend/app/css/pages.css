@@ -1,0 +1,18 @@
+/* pages.css: shared page layout helpers only (header, title, lede, stacks, grids). Component styles live in components.css. */
+.g-page { display: flex; flex-direction: column; gap: var(--s6); padding: var(--s8) var(--gutter) var(--s12); min-width: 0; }
+.g-page--narrow { max-width: 880px; }
+.g-page__head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--s4); }
+.g-page__title { font-family: var(--font-serif); font-weight: 500; font-size: var(--fs-h1); line-height: var(--lh-h1); }
+.g-page__lede { color: var(--ink-2); font-size: calc(16px * var(--fz)); line-height: var(--lh-body); margin-top: 6px; max-width: 70ch; }
+.g-page__actions { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; }
+.g-section { display: flex; flex-direction: column; gap: var(--s4); }
+.g-section__title { font-family: var(--font-serif); font-weight: 500; font-size: var(--fs-h2); line-height: var(--lh-h2); }
+.g-stack { display: flex; flex-direction: column; gap: var(--s4); }
+.g-stack--lg { gap: var(--s6); }
+.g-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); }
+.g-row--between { justify-content: space-between; }
+.g-grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 400px); gap: var(--s6); align-items: start; }
+.g-grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--s4); }
+.g-reading { font-family: var(--font-serif); font-size: var(--fs-read); line-height: var(--lh-read); max-width: 70ch; }
+@media (max-width: 1000px) { .g-grid-2 { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 768px) { .g-page { padding-top: var(--s5); gap: var(--s5); } }

@@ -1,0 +1,26 @@
+/* Shared by Research, Judgment reader and Citation check (tokens only). */
+.jr-meta { display: grid; grid-template-columns: minmax(96px, 150px) minmax(0, 1fr); gap: var(--s2) var(--s4); margin: 0; font-size: var(--fs-ui); line-height: var(--lh-ui); }
+.jr-meta dt { color: var(--muted); }
+.jr-meta dd { margin: 0; overflow-wrap: anywhere; }
+.jr-meta--inline { font-size: var(--fs-meta); line-height: var(--lh-meta); }
+.jr-chips { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; }
+.jr-read { margin: 0; font-family: var(--font-serif); font-size: var(--fs-read); line-height: var(--lh-read); max-width: 70ch; overflow-wrap: anywhere; }
+.rs-note { margin: 0; color: var(--muted); font-size: var(--fs-meta); line-height: var(--lh-meta); }
+.rs-h { margin: var(--s2) 0 0; font: 600 var(--fs-ui)/var(--lh-ui) var(--font-sans); color: var(--ink-2); }
+.rs-warn { display: flex; gap: var(--s2); align-items: flex-start; margin: 0; padding: var(--s3); border-radius: var(--r-md); background: var(--danger-tint); color: var(--danger); font-weight: 600; font-size: var(--fs-ui); }
+.rs-res__act { display: flex; flex-wrap: wrap; gap: var(--s2); }
+
+.jd-title { overflow-wrap: anywhere; }
+.jd-main { display: flex; flex-direction: column; gap: var(--s4); min-width: 0; }
+.jd-banner { display: flex; gap: var(--s2); padding: var(--s3) var(--s4); border-radius: var(--r-md); background: var(--info-tint); color: var(--info); font-size: var(--fs-ui); }
+.jd-panel { padding-top: var(--s4); }
+.jd-paras { display: flex; flex-direction: column; gap: var(--s3); }
+.jd-para { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: var(--s3); }
+.jd-para__n { color: var(--muted); font-size: var(--fs-ui); padding-top: 4px; }
+.jd-cited { margin: 0; padding-left: var(--s6); display: flex; flex-direction: column; gap: var(--s2); }
+.g-pdf__frame { width: 100%; min-height: 70vh; border: 1px solid var(--line); border-radius: var(--r-md); }
+
+@media print {
+  .g-sidebar, .g-topbar, .g-skip, .jd-noprint, .g-pdf { display: none; }
+  .jd .g-page { padding: 0; }
+}

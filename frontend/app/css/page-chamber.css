@@ -1,0 +1,5 @@
+/* Chamber page. Tokens only. */
+.g-chamber__stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--s4); }
+.g-chamber__person { display: flex; align-items: center; gap: var(--s3); min-width: 220px; }
+.g-chamber__name { font-weight: 600; }
+.g-chamber__perms { max-width: 40ch; }

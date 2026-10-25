@@ -1,0 +1,4 @@
+/* Density preference (Settings). Applied via <html data-density="compact">. */
+html[data-density="compact"] { --gutter: 24px; --card-pad: 16px; }
+html[data-density="compact"] .g-page { gap: var(--s4); padding-top: var(--s5); }
+html[data-density="compact"] .g-row { padding-top: var(--s2); padding-bottom: var(--s2); }

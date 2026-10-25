@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  vidhi-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vidhi_ai_backend
+    restart: always
+    environment:
+      - PORT=8090
+      - GYANAM_JWT_SECRET=${GYANAM_JWT_SECRET:?set GYANAM_JWT_SECRET in .env}
+      - GYANAM_DB_PATH=/app/data/vidhi_legal.db
+      - GYANAM_ALLOW_LEGACY_HEADER=0
+      - GYANAM_UI=new
+    volumes:
+      - ./data:/app/data
+      - ./backups:/app/backups
+      - ./logs:/app/logs
+    ports:
+      - "8090:8090"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/api/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  vidhi-nginx:
+    image: nginx:alpine
+    container_name: vidhi_ai_nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - vidhi-backend

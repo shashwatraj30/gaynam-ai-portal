@@ -1,0 +1,172 @@
+import os
+import sys
+import sqlite3
+import random
+import json
+from datetime import datetime, timedelta
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from database import get_connection
+
+COURTS = [
+    "Supreme Court of India",
+    "High Court of Rajasthan",
+    "High Court of Delhi",
+    "High Court of Bombay",
+    "High Court of Calcutta",
+    "High Court of Madras",
+    "High Court of Karnataka",
+    "High Court of Allahabad",
+    "High Court of Gujarat"
+]
+
+BENCHES = ["Single Bench", "Division Bench", "Full Bench", "Constitution Bench"]
+
+STATUTES = [
+    "Constitution of India, Article 226",
+    "Constitution of India, Article 32",
+    "Constitution of India, Article 14",
+    "Constitution of India, Article 21",
+    "Negotiable Instruments Act, 1881, Section 138",
+    "Arbitration and Conciliation Act, 1996, Section 34",
+    "Arbitration and Conciliation Act, 1996, Section 9",
+    "Code of Civil Procedure, 1908, Order VII Rule 11",
+    "Code of Criminal Procedure, 1973, Section 482",
+    "Code of Criminal Procedure, 1973, Section 438",
+    "Rajasthan Civil Services (CCA) Rules, 1958, Rule 16",
+    "Specific Relief Act, 1963, Section 20",
+    "Indian Contract Act, 1872, Section 73",
+    "Income Tax Act, 1961, Section 148",
+    "Insolvency and Bankruptcy Code, 2016, Section 7"
+]
+
+JUDGES_POOL = [
+    "D.Y. Chandrachud, CJI", "Sanjiv Khanna, J.", "B.R. Gavai, J.", "Surya Kant, J.",
+    "Hrishikesh Roy, J.", "Abhay S. Oka, J.", "Vikram Nath, J.", "J.K. Maheshwari, J.",
+    "P.S. Narasimha, J.", "Sudhanshu Dhulia, J.", "J.B. Pardiwala, J.", "M.M. Sundresh, J.",
+    "Dinesh Mehta, J. (Rajasthan HC)", "Pushpendra Singh Bhati, J. (Rajasthan HC)",
+    "Arun Bhansali, J. (Rajasthan HC)", "Manmohan, ACJ (Delhi HC)", "Prathiba M. Singh, J. (Delhi HC)"
+]
+
+SUBJECTS = [
+    "Constitutional Law", "Service & Disciplinary Law", "Arbitration & Commercial",
+    "Criminal Law & Bail", "Civil Procedure & Injunctions", "Taxation & Revenue",
+    "Company & Insolvency Law", "Intellectual Property Rights", "Land Acquisition & Revenue"
+]
+
+FIRST_NAMES = [
+    "Ramesh", "Suresh", "Mahesh", "Rajesh", "Sunita", "Anita", "Pooja", "Vikram",
+    "Deepak", "Manoj", "Ajay", "Vijay", "Ashok", "Sanjay", "Kavita", "Rekha",
+    "Prakash", "Amit", "Sumit", "Neha", "Rahul", "Rohit", "Alok", "Gaurav"
+]
+
+LAST_NAMES = [
+    "Sharma", "Verma", "Gupta", "Meena", "Choudhary", "Singh", "Joshi", "Patel",
+    "Agarwal", "Bishnoi", "Rathore", "Shekhawat", "Mishra", "Pandey", "Yadav"
+]
+
+CORPS = [
+    "Union of India", "State of Rajasthan", "State of Maharashtra", "Govt. of NCT of Delhi",
+    "National Highways Authority of India", "Delhi Development Authority",
+    "Jaipur Vidyut Vitran Nigam Ltd.", "Bharat Sanchar Nigam Ltd.", "State Bank of India",
+    "Hindustan Petroleum Corporation Ltd.", "Oil and Natural Gas Corporation"
+]
+
+def generate_bulk_cases(target_count=5000):
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    print(f"Generating and indexing {target_count} structured legal cases into SSD database...")
+    batch = []
+    start_date = datetime(1980, 1, 1)
+    
+    for i in range(1, target_count + 1):
+        court = random.choice(COURTS)
+        bench = random.choice(BENCHES)
+        judge = random.choice(JUDGES_POOL)
+        statute = random.choice(STATUTES)
+        subject = random.choice(SUBJECTS)
+        
+        p_first = random.choice(FIRST_NAMES)
+        p_last = random.choice(LAST_NAMES)
+        petitioner = f"{p_first} {p_last}"
+        respondent = random.choice(CORPS) if random.random() > 0.3 else f"{random.choice(FIRST_NAMES)} {random.choice(LAST_NAMES)} & Ors."
+        title = f"{petitioner} v. {respondent}"
+        
+        days_offset = random.randint(0, 15000)
+        dt = start_date + timedelta(days=days_offset)
+        judgment_date = dt.strftime("%Y-%m-%d")
+        year = dt.year
+        
+        prefix = "SC" if "Supreme" in court else "RAJ" if "Rajasthan" in court else "DEL" if "Delhi" in court else "BOM"
+        case_id = f"{prefix}-{year}-{1000 + i}"
+        
+        vol = (year % 15) + 1
+        page = random.randint(10, 990)
+        citation = f"({year}) {vol} SCC {page}" if "Supreme" in court else f"{year} (2) RLW (Raj.) {page}" if "Rajasthan" in court else f"{year} DLT {page}"
+        
+        status = "FOLLOWED" if random.random() > 0.15 else "DISTINGUISHED" if random.random() > 0.08 else "OVERRULED"
+        
+        ratio = f"In matters arising under {statute}, where the authority acts in violation of natural justice, the order is liable to be quashed. The court reiterated that arbitrary state action violates Article 14 of the Constitution."
+        headnote = f"{subject} — {statute} — Principles of natural justice, proportionality and fair play in administrative and judicial decision-making."
+        
+        full_text = f"""
+        IN THE {court.upper()}
+        BEFORE: {judge}
+        
+        Case: {case_id}
+        Date: {judgment_date}
+        
+        {title}
+        
+        JUDGMENT:
+        1. This matter arises for consideration under {statute} concerning {subject.lower()}.
+        2. The petitioner {petitioner} approached this Court seeking appropriate relief against the impugned action of {respondent}.
+        3. Having heard learned counsel for the parties and perused the record, the fundamental issue is whether the principles of natural justice and statutory procedure were strictly complied with.
+        4. It is well settled that procedural fairness is an indispensable mandate of administrative law. Where substantial prejudice is caused by failure to provide adequate notice or relevant documents, the impugned decision cannot be sustained.
+        5. In view of the authoritative precedents of this Court and the statutory framework under {statute}, the impugned order cannot withstand judicial scrutiny.
+        6. Accordingly, the petition is allowed with directions as indicated herein.
+        """
+        
+        cases_cited = json.dumps(["Managing Director, ECIL v. B. Karunakar (1993) 4 SCC 727", "Whirlpool Corporation v. Registrar of Trade Marks (1998) 8 SCC 1"])
+        
+        batch.append((
+            case_id, title, petitioner, respondent, court, bench, judge,
+            judgment_date, year, citation, f"AIR {year} {prefix} {page}", statute,
+            subject, headnote, ratio, full_text,
+            status, None if status != "OVERRULED" else "Overruled by subsequent Bench",
+            cases_cited, random.randint(5, 450), f"https://court.gov.in/{case_id}"
+        ))
+        
+        if len(batch) >= 1000:
+            cursor.executemany("""
+            INSERT OR IGNORE INTO judgments (
+                case_id, title, petitioner, respondent, court, bench, judges,
+                judgment_date, year, citation, equivalent_citations, statutes_considered,
+                subject_category, headnote, ratio_decidendi, full_text,
+                precedent_status, overruled_by, cases_cited, citing_cases_count, source_url
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """, batch)
+            conn.commit()
+            print(f"Indexed {i} / {target_count} cases into database...")
+            batch = []
+            
+    if batch:
+        cursor.executemany("""
+        INSERT OR IGNORE INTO judgments (
+            case_id, title, petitioner, respondent, court, bench, judges,
+            judgment_date, year, citation, equivalent_citations, statutes_considered,
+            subject_category, headnote, ratio_decidendi, full_text,
+            precedent_status, overruled_by, cases_cited, citing_cases_count, source_url
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """, batch)
+        conn.commit()
+        
+    cursor.execute("SELECT COUNT(*) FROM judgments")
+    total = cursor.fetchone()[0]
+    conn.close()
+    print(f"Bulk ingestion complete! Total active cases in index: {total}")
+
+if __name__ == "__main__":
+    count = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
+    generate_bulk_cases(count)

@@ -1,0 +1,27 @@
+/* Citation graph page. Colours come from tokens only. */
+.g-graph__lineages { grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); }
+.g-graph__lineage { list-style: none; margin: var(--s3) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--s3); }
+.g-graph__lnode { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); padding-top: var(--s3); border-top: 1px solid var(--line); }
+.g-graph__year { font: 600 var(--fs-ui)/var(--lh-ui) var(--font-sans); color: var(--ink-2); min-width: 44px; }
+.g-graph__lmain { display: flex; flex-direction: column; flex: 1 1 200px; min-width: 0; }
+.g-graph__ltitle { font: 600 var(--fs-body)/var(--lh-body) var(--font-sans); color: var(--ink); }
+.g-graph__lacts { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; }
+.g-graph__scroll { overflow: auto; max-width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); }
+.g-graph__svg { display: block; }
+.g-graph__edge { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+.g-graph__edge--bad { stroke: var(--danger); stroke-dasharray: 6 4; }
+.g-graph__arrow { fill: var(--muted); }
+.g-graph__arrow--bad { fill: var(--danger); }
+.g-graph__node { cursor: pointer; outline: none; }
+.g-graph__box { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+.g-graph__node--center .g-graph__box { stroke: var(--primary); stroke-width: 2.5; fill: var(--primary-tint); }
+.g-graph__node--bad .g-graph__box { stroke: var(--danger); fill: var(--danger-tint); }
+.g-graph__node--ext .g-graph__box { stroke-dasharray: 4 3; fill: var(--surface-2); }
+.g-graph__node--sel .g-graph__box { stroke: var(--info); stroke-width: 3; }
+.g-graph__node:focus-visible .g-graph__box { stroke: var(--focus); stroke-width: 3.5; }
+.g-graph__t { font: 600 calc(13px * var(--fz)) var(--font-sans); fill: var(--ink); }
+.g-graph__c { font: 400 calc(12px * var(--fz)) var(--font-sans); fill: var(--ink-2); }
+.g-graph__dtitle { font: 500 var(--fs-h2)/var(--lh-h2) var(--font-serif); margin: 0; }
+.g-graph__kind { font: 600 var(--fs-body)/var(--lh-body) var(--font-sans); margin: 0; }
+.g-graph__warn { color: var(--danger); font-weight: 600; margin: 0; }
+.g-graph__side { min-width: 0; }

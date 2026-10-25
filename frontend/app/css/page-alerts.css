@@ -1,0 +1,7 @@
+/* Alerts page. Tokens only. */
+.g-alerts__stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--s4); }
+.g-alerts__grid { grid-template-columns: minmax(280px, 380px) minmax(0, 1fr); }
+.g-alerts__title { font: 500 var(--fs-h2)/var(--lh-h2) var(--font-serif); margin: 0; }
+.g-alerts__k { font: 600 var(--fs-body)/var(--lh-body) var(--font-sans); }
+.g-alerts__detail { min-width: 0; }
+@media (max-width: 1000px) { .g-alerts__grid { grid-template-columns: minmax(0, 1fr); } }
