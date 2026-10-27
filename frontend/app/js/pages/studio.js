@@ -23,19 +23,29 @@ import { errorState } from '../ui/error-state.js';
 import { emptyState } from '../ui/empty-state.js';
 import { confirmDialog } from '../ui/confirm.js';
 import { toast } from '../ui/toast.js';
-import { field, input, textarea } from '../ui/form.js';
+import { field, input, textarea, select } from '../ui/form.js';
 import { formatRelative } from '../format.js';
 import { statusChip } from './lib/draft-ui.js';
 import { createInsights } from './lib/studio-insights-ui.js';
+import { openHistory } from './lib/studio-history-ui.js';
 import {
   SECTION_KEYS, PARAM_KEYS, normalizeSections, joinSections, hasContent, detectOcrNoise, engineKind, normalizeIntake,
   paramsFromDraft, missingParams, parseIssues, buildDraftRequest, buildSavePayload, classifyConflict, citationChecks,
   summarizeVerification, createAutosaver, alertMarks, sendForReviewPath, isEditableStatus,
+  normalizeExtra, extraFromDraft, OUTCOME_VALUES, OUTCOME_OTHER, outcomeParts, outcomeFromParts, insertPrecedentText, missingAuthorities,
+  addAuthoritiesText, buildRegenerateRequest, mergeRegenerated, createUndoStack, rejectTarget, canSectionAction, returnReasonFor, supportCheck,
 } from './lib/studio-logic.js';
 
 addMessages('en', dEn); addMessages('hi', dHi); addMessages('en', en); addMessages('hi', hi);
 
-const LONG = new Set(['facts', 'issues', 'petitioner_arguments', 'respondent_arguments', 'statutory_provisions']);
+const LONG = new Set(['facts', 'issues', 'petitioner_arguments', 'respondent_arguments', 'statutory_provisions', 'prayer']);
+
+function saveBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = h('a', { href: url, download: name, class: 'sr-only' });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
 let cleanup = null;
 
 function rowsFor(text) { const s = String(text || ''); return Math.min(40, Math.max(4, s.split('\n').length + Math.ceil(s.length / 110))); }
@@ -48,11 +58,30 @@ async function render({ id }, ctx) {
     id: null, version: null, status: 'DRAFT', params: normalizeIntake(isNew ? store.get('intakeParams') : null), content: {}, texts: normalizeSections(null),
     engine: '', tab: 'draft', active: 0, noisy: new Set(), missing: [], saveState: 'none', savedAt: null,
     generating: null, genError: null, check: null, busy: false,
+    extra: normalizeExtra(isNew ? store.get('intakeParams') : null), undo: createUndoStack(), savedTexts: normalizeSections(null), regen: new Set(), returnReason: '',
   };
   let ctl = null; let ticker = null; let noiseTimer = null; let guardBusy = false;
   const root = h('div', { class: 'studio' });
-  const insights = createInsights({ api });
-  const pushInsights = () => insights.update({ params: S.params, texts: S.texts, engine: S.engine, precedents: Array.isArray(S.content.retrieved_precedents) ? S.content.retrieved_precedents : [] });
+  const sec15 = SECTION_KEYS[14]; const sec10 = SECTION_KEYS[9];
+  const canDraft = () => (typeof ctx.can === 'function' ? ctx.can('DRAFT_FULL') : true);
+  const sectionActions = () => canSectionAction({ status: S.status, canDraft: canDraft() });
+  function setSectionText(n, text) {
+    const k = SECTION_KEYS[n - 1];
+    S.texts[k] = text;
+    const ta = main.querySelector(`#sec-${n}`);
+    if (ta && ta.tagName === 'TEXTAREA') { ta.value = text; ta.setAttribute('rows', String(rowsFor(text))); }
+    S.noisy = detectOcrNoise(text).noisy ? new Set([...S.noisy, k]) : new Set([...S.noisy].filter((x) => x !== k));
+    autosaver.markDirty();
+  }
+  function insertPrecedent(n, p) {
+    if (!sectionActions()) return { added: false };
+    const r = insertPrecedentText(S.texts[SECTION_KEYS[n - 1]], p);
+    if (r.added) { setSectionText(n, r.text); paintLeft(); paintNotes(); }
+    return r;
+  }
+  const insights = createInsights({ api, onInsert: insertPrecedent });
+  const pushInsights = () => insights.update({ params: S.params, texts: S.texts, engine: S.engine, authorities: S.extra.authorities, canEdit: sectionActions(),
+    precedents: Array.isArray(S.content.retrieved_precedents) ? S.content.retrieved_precedents : [] });
 
   const head = h('header', { class: 'studio__head' });
   const notes = h('div', { class: 'studio__notes' });
@@ -68,19 +97,21 @@ async function render({ id }, ctx) {
     let c = d.draft_content_json;
     if (!c || typeof c !== 'object') c = {};
     S.id = d.id; S.version = d.version ?? 1; S.status = normalizeDraftStatus(d.status);
-    S.params = paramsFromDraft(d);
+    S.params = paramsFromDraft(d); S.extra = extraFromDraft(d); S.returnReason = returnReasonFor(d); S.undo.clear();
     const { sections, ...rest } = c;
     S.content = rest; S.texts = normalizeSections(sections);
     S.engine = c.engine || c.generation_mode || '';
     S.noisy = new Set(SECTION_KEYS.filter((k) => detectOcrNoise(S.texts[k]).noisy));
-    S.saveState = 'saved'; S.savedAt = null;
+    S.saveState = 'saved'; S.savedAt = null; S.savedTexts = { ...S.texts };
   }
 
   // ---------- saving ----------
   async function doSave(retry = true) {
-    const payload = buildSavePayload({ id: S.id, version: S.version, status: S.status, params: S.params, content: S.content, texts: S.texts });
+    const payload = buildSavePayload({ id: S.id, version: S.version, status: S.status, params: S.params, content: S.content, texts: S.texts, extra: S.extra });
+    const sentTexts = { ...S.texts };
     try {
       const r = await api.saveDraft(payload);
+      S.savedTexts = sentTexts;
       const first = !S.id;
       S.id = r.draft_id; S.version = r.version; S.status = normalizeDraftStatus(r.status || S.status); S.savedAt = new Date();
       if (first) {
@@ -122,10 +153,10 @@ async function render({ id }, ctx) {
     paintAll();
     ticker = setInterval(() => { const el = main.querySelector('[data-elapsed]'); if (el) el.textContent = t('studio.gen.elapsed', { s: Math.round((Date.now() - S.generating.start) / 1000) }); }, 1000);
     try {
-      const res = await api.draftJudgment(buildDraftRequest(S.params), { signal: ctl.signal });
+      const res = await api.draftJudgment(buildDraftRequest(S.params, S.extra), { signal: ctl.signal });
       const { sections, ...rest } = res || {};
       S.content = rest; S.texts = normalizeSections(sections); S.engine = rest.engine || rest.generation_mode || '';
-      S.noisy = new Set(SECTION_KEYS.filter((k) => detectOcrNoise(S.texts[k]).noisy)); S.check = null; S.active = 0;
+      S.noisy = new Set(SECTION_KEYS.filter((k) => detectOcrNoise(S.texts[k]).noisy)); S.check = null; S.active = 0; S.undo.clear();
       stopGen(); paintAll();
       autosaver.markDirty();
       autosaver.flush().catch(() => {});
@@ -136,6 +167,75 @@ async function render({ id }, ctx) {
     }
   }
   function stopGen() { if (ticker) clearInterval(ticker); ticker = null; ctl = null; S.generating = null; }
+
+  // ---------- per-section regenerate / reject ----------
+  async function regenerate(n) {
+    if (!sectionActions() || S.regen.has(n)) return;
+    if (!(await confirmDialog({ title: t('studio.regen.title', { n }), message: t('studio.regen.msg'), confirmLabel: t('studio.regen.ok'), tone: 'danger' }))) return;
+    const k = SECTION_KEYS[n - 1]; const before = S.texts[k] || '';
+    S.regen.add(n); paintMain(); announce(t('studio.regen.busy', { n }));
+    try {
+      const res = await api.draftJudgment(buildRegenerateRequest(S.params, S.extra, n, S.texts));
+      const m = mergeRegenerated(S.texts, res, n);
+      if (!m.found) { toast(t('studio.regen.none', { n }), { tone: 'warn' }); announce(t('studio.regen.none', { n })); }
+      else {
+        S.undo.push(k, before);
+        S.texts[k] = m.text; if (res?.engine) S.engine = res.engine;
+        S.noisy = detectOcrNoise(m.text).noisy ? new Set([...S.noisy, k]) : new Set([...S.noisy].filter((x) => x !== k));
+        autosaver.markDirty(); toast(t('studio.regen.done', { n }), { tone: 'primary' }); announce(t('studio.regen.done', { n }));
+      }
+    } catch (e) { toast(e?.message || t('studio.regen.failed', { n }), { tone: 'danger' }); }
+    finally { S.regen.delete(n); paintAll(); const ta = main.querySelector(`#sec-${n}`); if (ta && ta.focus) ta.focus({ preventScroll: true }); }
+  }
+  function reject(n) {
+    if (!sectionActions()) return;
+    const k = SECTION_KEYS[n - 1];
+    const tgt = rejectTarget(S.undo, k, S.savedTexts, S.texts[k] || '');
+    if (!tgt.source) { toast(t('studio.reject.nothing', { n }), { tone: 'neutral' }); announce(t('studio.reject.nothing', { n })); return; }
+    if (tgt.source === 'undo') S.undo.pop(k);
+    setSectionText(n, tgt.text); paintAll();
+    const msg = t(tgt.source === 'undo' ? 'studio.reject.undo' : 'studio.reject.saved', { n });
+    toast(msg, { tone: 'primary' }); announce(msg);
+  }
+  const live = h('p', { class: 'sr-only', role: 'status', 'aria-live': 'polite' });
+  function announce(msg) { live.textContent = ''; setTimeout(() => { live.textContent = msg; }, 30); }
+
+  async function saveNow() {
+    if (!editable()) return;
+    try {
+      if (!S.id && !hasContent(S.texts) && !S.params.case_title) return;
+      autosaver.markDirty(); await autosaver.flush();
+      toast(t('studio.save.nowDone'), { tone: 'primary' }); announce(t('studio.save.nowDone'));
+    } catch (e) { toast(e?.message || t('studio.save.error'), { tone: 'danger' }); }
+  }
+  async function downloadDocx() {
+    if (!S.id) { toast(t('studio.docx.needsSave'), { tone: 'warn' }); return; }
+    try {
+      if (autosaver.dirty) await autosaver.flush();
+      saveBlob(await api.exportDocx(S.id), `${String(S.params.case_number || `draft-${S.id}`).replace(/[^A-Za-z0-9._-]+/g, '_')}.docx`);
+      toast(t('studio.docx.done'), { tone: 'primary' });
+    } catch (e) { toast(e?.message || t('state.error'), { tone: 'danger' }); }
+  }
+  async function deleteDraft() {
+    if (!S.id || S.status === 'FINAL_SEALED') return;
+    if (!(await confirmDialog({ title: t('studio.delete.title'), message: t('studio.delete.msg'), confirmLabel: t('studio.delete'), tone: 'danger' }))) return;
+    try {
+      await api.deleteDraft(S.id);
+      toast(t('studio.delete.done'), { tone: 'primary' });
+      ctx.navigate('#/drafts');
+    } catch (e) {
+      const fallback = e?.code === 'DRAFT_FINALIZED' ? t('studio.delete.finalized') : t('studio.delete.failed');
+      toast(e?.message || fallback, { tone: 'danger' });
+    }
+  }
+  async function showHistory() {
+    if (!S.id) { toast(t('studio.hist.empty'), { tone: 'neutral' }); return; }
+    try { if (autosaver.dirty) await autosaver.flush(); } catch { /* the drawer still opens; the save error is shown in the header */ }
+    openHistory({
+      api, id: S.id, getVersion: () => S.version, canRestore: sectionActions(),
+      onRestored: (d) => { autosaver.clearDirty(); applyDraft(d); paintAll(); announce(t('studio.hist.restore.done', { n: d?.version ?? '' })); },
+    });
+  }
 
   // ---------- status ----------
   async function sendForReview() {
@@ -192,14 +292,26 @@ async function render({ id }, ctx) {
       h('div', { class: 'g-page__actions' },
         editable() && has ? button({ label: t('studio.prepareAgain'), variant: 'secondary', disabled: !!S.generating || S.busy, onClick: prepare }) : null,
         editable() && !has ? button({ label: t('studio.prepare'), variant: 'primary', icon: 'edit', disabled: !!S.generating, onClick: prepare }) : null,
+        editable() && has ? button({ label: t('studio.save.now'), variant: 'secondary', disabled: !!S.generating || S.busy || S.saveState === 'saving', onClick: saveNow }) : null,
+        S.id ? button({ label: t('studio.docx'), variant: 'ghost', icon: 'download', onClick: downloadDocx }) : null,
         editable() && has ? button({ label: t('studio.send'), variant: 'primary', disabled: !!S.generating || S.busy, onClick: sendForReview }) : null,
-        !editable() && S.id ? button({ label: t('studio.openReview'), variant: 'primary', href: `#/drafts/${S.id}/review` }) : null));
+        !editable() && S.id ? button({ label: t('studio.openReview'), variant: 'primary', href: `#/drafts/${S.id}/review` }) : null,
+        S.id && S.status !== 'FINAL_SEALED' ? button({ label: t('studio.delete'), variant: 'danger', disabled: !!S.generating || S.busy, onClick: deleteDraft }) : null));
     paintSaveState();
   }
   function paintNotes() {
     clear(notes);
     const kind = engineKind(S.engine);
     if (!editable()) notes.append(banner({ tone: 'info', message: t('studio.readonly', { status: draftStatusChip(S.status).label }) }));
+    if (S.returnReason && (S.status === 'RETURNED' || S.status === 'DRAFT')) notes.append(banner({ tone: 'warn', message: t('studio.returned.banner', { reason: S.returnReason }) }));
+    const miss = editable() && hasContent(S.texts) ? missingAuthorities(S.texts[sec15], S.extra.authorities) : [];
+    if (miss.length) {
+      notes.append(banner({ tone: 'info', message: t('studio.pin.banner', { n: miss.length }),
+        action: { label: t('studio.pin.add'), onClick: () => {
+          const r = addAuthoritiesText(S.texts[sec15], S.extra.authorities);
+          if (r.added) { setSectionText(15, r.text); paintAll(); announce(t('studio.pin.added', { n: r.added })); toast(t('studio.pin.added', { n: r.added }), { tone: 'primary' }); }
+        } } }));
+    }
     if (kind === 'template') notes.append(banner({ tone: 'warn', message: t('studio.banner.template') }));
     if (kind === 'model') notes.append(banner({ tone: 'info', message: t('studio.banner.model') }));
     const noisy = SECTION_KEYS.map((k, i) => (S.noisy.has(k) ? i + 1 : 0)).filter(Boolean);
@@ -272,23 +384,41 @@ async function render({ id }, ctx) {
     }
     const alertTarget = store.get('alertTarget') || {};
     const alertSecs = new Set(alertMarks(alertTarget, S.id, S.texts)?.sections || []);
+    panel.append(live);
     SECTION_KEYS.forEach((k, i) => {
       const n = i + 1; const taId = `sec-${n}`;
       const label = h('label', { class: 'studio__sectitle', for: taId }, `${n}. ${t(`studio.sec.${n}`)}`);
+      const busyN = S.regen.has(n);
+      const acts = h('div', { class: 'studio__secacts' },
+        button({ label: busyN ? t('studio.regen.busy', { n }) : t('studio.sec.regen'), variant: 'ghost', ariaLabel: t('studio.sec.regenAria', { n }), disabled: !sectionActions() || busyN || !!S.generating, onClick: () => regenerate(n) }),
+        button({ label: t('studio.sec.reject'), variant: 'ghost', ariaLabel: t('studio.sec.rejectAria', { n }), disabled: !sectionActions() || busyN || !!S.generating, onClick: () => reject(n) }));
       let ctrl;
       if (editable()) {
         ctrl = textarea({ id: taId, rows: rowsFor(S.texts[k]), class: 'studio__ta', onInput: (e) => onSectionInput(i, e.target), onFocus: () => { if (S.active !== i) { S.active = i; paintLeft(); } } }, S.texts[k]);
         ctrl.value = S.texts[k];
       } else { ctrl = h('div', { id: taId, class: 'studio__text g-reading', tabindex: '0' }, S.texts[k]); }
       const flagged = alertSecs.has(n);
-      panel.append(h('section', { class: `studio__sec${S.noisy.has(k) ? ' studio__sec--noisy' : ''}${flagged ? ' studio__sec--alert' : ''}` }, label,
+      panel.append(h('section', { class: `studio__sec${S.noisy.has(k) ? ' studio__sec--noisy' : ''}${flagged ? ' studio__sec--alert' : ''}`, 'aria-busy': busyN ? 'true' : null }, h('div', { class: 'studio__sechead' }, label, acts),
         flagged ? banner({ tone: 'warn', message: t('studio.alert.sec', { cite: alertTarget.citation || alertTarget.overruledTitle || '', by: alertTarget.overruledBy || t('studio.chk.largerBench') }) }) : null, ctrl));
     });
     return undefined;
   }
+  function outcomeField() {
+    const parts = outcomeParts(S.params.outcome);
+    const sel = select({ name: 'outcome', value: parts.choice, options: [...OUTCOME_VALUES, OUTCOME_OTHER].map((v) => ({ value: v, label: t(`studio.outcome.${v}`) })) });
+    sel.value = parts.choice;
+    const free = input({ name: 'outcome_text', value: parts.text, 'aria-label': t('studio.outcome.text') });
+    free.value = parts.text; free.hidden = parts.choice !== OUTCOME_OTHER;
+    const sync = () => { S.params.outcome = outcomeFromParts(sel.value, free.value); free.hidden = sel.value !== OUTCOME_OTHER; if (editable()) autosaver.markDirty(); };
+    sel.addEventListener('change', () => { sync(); if (!free.hidden) free.focus(); });
+    free.addEventListener('input', sync);
+    sel.disabled = !editable(); free.disabled = !editable();
+    return field({ label: t('studio.param.outcome'), hint: t('studio.outcome.hint'), input: h('div', { class: 'studio__outcome' }, sel, free) });
+  }
   function paintParams(panel) {
     panel.append(h('p', { class: 'g-meta' }, t('studio.params.hint')));
     for (const k of PARAM_KEYS) {
+      if (k === 'outcome') { panel.append(outcomeField()); continue; }
       const long = LONG.has(k);
       const ctrl = long ? textarea({ rows: k === 'facts' ? 8 : 4, name: k }, S.params[k]) : input({ name: k, value: S.params[k] });
       if (long) ctrl.value = S.params[k];
@@ -304,7 +434,12 @@ async function render({ id }, ctx) {
       { label: t('studio.chk.overruled'), state: c.overruled,
         detail: c.overruled === 'fail' ? t('studio.chk.overruledBy', { by: c.overruledBy || t('studio.chk.largerBench') }) : c.overruled === 'pass' ? (c.distinguished ? t('studio.chk.distinguished') : t('studio.chk.none')) : t('studio.chk.needsFound') },
     ];
-    const later = ['quote', 'support', 'bench'].map((x) => ({ label: t(`studio.chk.${x}`), state: 'unchecked', detail: t('studio.chk.later') }));
+    const sup = supportCheck(v, [...S.extra.authorities, ...(Array.isArray(S.content.retrieved_precedents) ? S.content.retrieved_precedents : [])]);
+    const later = [
+      { label: t('studio.chk.quote'), state: 'unchecked', detail: t('studio.chk.needsText') },
+      { label: t('studio.chk.support'), state: sup, detail: sup === 'pass' ? t('studio.chk.supportOk') : sup === 'fail' ? t('studio.chk.supportNo') : t('studio.chk.supportNeedsFound') },
+      { label: t('studio.chk.bench'), state: 'unchecked', detail: t('studio.chk.needsText') },
+    ];
     return h('li', { class: 'studio__claim' },
       h('div', { class: 'studio__claimcite' }, v.citation || v.query_citation),
       checkList(items),
@@ -361,10 +496,14 @@ async function render({ id }, ctx) {
     if (ok) { try { await autosaver.flush(); location.hash = href; } catch { toast(t('studio.save.error'), { tone: 'danger' }); } }
     guardBusy = false;
   };
+  const onKey = (e) => { if ((e.ctrlKey || e.metaKey) && !e.altKey && String(e.key).toLowerCase() === 's') { e.preventDefault(); if (editable() && !S.generating) saveNow(); } };
   document.addEventListener('click', onClick, true);
+  document.addEventListener('keydown', onKey);
   window.addEventListener('beforeunload', onBefore);
+  ctx.setHistoryHandler(() => showHistory());
   cleanup = () => {
     document.removeEventListener('click', onClick, true); window.removeEventListener('beforeunload', onBefore);
+    document.removeEventListener('keydown', onKey); ctx.setHistoryHandler(null);
     if (ticker) clearInterval(ticker); clearTimeout(noiseTimer);
     if (ctl) ctl.abort();
     insights.destroy();

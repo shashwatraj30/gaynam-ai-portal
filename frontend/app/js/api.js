@@ -23,6 +23,7 @@ export function getToken() {
   try { return ss()?.getItem(TOKEN_KEY) || null; } catch { return null; }
 }
 export function setSession({ token, user }) {
+  const was = !!getToken();
   memToken = token || null; memUser = user || null;
   try {
     const s = ss();
@@ -31,7 +32,8 @@ export function setSession({ token, user }) {
       if (user) s.setItem(USER_KEY, JSON.stringify(user)); else s.removeItem(USER_KEY);
     }
   } catch { /* ignore */ }
-  emit('gyanam:session', { signedIn: !!token });
+  const now = !!token;
+  if (was !== now) emit('gyanam:session', { signedIn: now });
 }
 export function clearSession() { setSession({ token: null, user: null }); }
 export function getUser() {
@@ -146,7 +148,7 @@ export const api = {
   recentCases: (limit = 6) => get(`/api/cases/recent${qs({ limit })}`),
   sync: {
     trigger: () => post('/api/sync/trigger', undefined, { timeout: 60000 }),
-    status: () => get('/api/sync/status'),
+    status: (o) => get('/api/sync/status', o),
     history: () => get('/api/sync/history'),
   },
   search: (body, o) => post('/api/search', body, o),
@@ -169,6 +171,7 @@ export const api = {
   saveDraft: (body) => post('/api/save_draft', body),
   drafts: () => get('/api/drafts'),
   draft: (id) => get(`/api/draft/${enc(id)}`),
+  deleteDraft: (id) => request(`/api/drafts/${enc(id)}`, { method: 'DELETE', noRedirect: true }),
   updateDraftStatus: (id, status, extra = {}) => post('/api/draft/update_status', { ...extra, draft_id: Number(id), status }, { noRedirect: true }),
   exportDocx: (id) => request(`/api/draft/export/docx/${enc(id)}`, { blob: true, timeout: 60000 }),
   printHtml: (id) => request(`/api/draft/export/print/${enc(id)}`, { blob: true, timeout: 60000 }),
@@ -176,7 +179,7 @@ export const api = {
   auditLogs: (params) => get(`/api/audit_logs${qs(params)}`),
   ledgerVerify: () => get('/api/audit/ledger/verify'),
   ledgerBlocks: (limit) => get(`/api/audit/ledger/blocks${qs({ limit })}`),
-  auditCsv: () => request('/api/export/audit_csv', { blob: true, timeout: 60000 }),
+  auditCsv: (params) => request(`/api/export/audit_csv${qs(params)}`, { blob: true, timeout: 60000 }),
   admin: {
     users: () => get('/api/admin/users'),
     toggleUser: (userId) => post('/api/admin/toggle_user', { user_id: userId }),
@@ -190,5 +193,45 @@ export const api = {
   alerts: () => get('/api/alerts'),
   judgmentGraph: (id) => get(`/api/judgment/${enc(id)}/graph`),
   draftVersions: (id) => get(`/api/drafts/${enc(id)}/versions`),
+  // ---- v3 (docs/API_V3_CONTRACT.md) ----
+  draftVersion: (id, n) => get(`/api/drafts/${enc(id)}/versions/${enc(n)}`),
+  restoreDraft: (id, n, version) => post(`/api/drafts/${enc(id)}/restore/${enc(n)}`, { version }, { noRedirect: true }),
+  courts: () => get('/api/courts'),
+  savedSearches: {
+    list: () => get('/api/saved_searches'),
+    create: (body) => post('/api/saved_searches', body, { noRedirect: true }),
+    remove: (id) => request(`/api/saved_searches/${enc(id)}`, { method: 'DELETE' }),
+  },
+  lineages: () => get('/api/lineages'),
+  judgmentParagraphs: (id) => get(`/api/judgment/${enc(id)}/paragraphs`),
+  judgmentTreatments: (id) => get(`/api/judgment/${enc(id)}/treatments`),
+  documents: {
+    list: (params) => get(`/api/documents${qs(params)}`),
+    get: (id) => get(`/api/documents/${enc(id)}`),
+    text: (id, params) => get(`/api/documents/${enc(id)}/text${qs(params)}`),
+    fileUrl: (id) => `/api/documents/${enc(id)}/file`,
+    file: (id) => request(`/api/documents/${enc(id)}/file`, { blob: true, timeout: 60000 }),
+    /** create({file?, text?, docType, title?, matterKey?, sample?}, {signal}) */
+    create: ({ file, text, docType, title, matterKey, sample } = {}, { signal } = {}) => {
+      const f = new FormData();
+      if (file) f.append('file', file);
+      if (text) f.append('text', text);
+      f.append('doc_type', docType || 'OTHER');
+      if (title) f.append('title', title);
+      if (matterKey) f.append('matter_key', matterKey);
+      if (sample) f.append('sample', sample);
+      return request('/api/documents', { method: 'POST', form: f, timeout: 120000, signal });
+    },
+    update: (id, body) => request(`/api/documents/${enc(id)}`, { method: 'PATCH', body }),
+    saveExtraction: (id, body) => request(`/api/documents/${enc(id)}/extraction`, { method: 'PUT', body, noRedirect: true }),
+    confirm: (id, version) => post(`/api/documents/${enc(id)}/confirm`, { version }, { noRedirect: true }),
+    archive: (id) => post(`/api/documents/${enc(id)}/archive`, {}),
+    remove: (id) => request(`/api/documents/${enc(id)}`, { method: 'DELETE', noRedirect: true }),
+    research: (id, body = {}) => post(`/api/documents/${enc(id)}/research`, body, { timeout: 60000 }),
+    pins: (id) => get(`/api/documents/${enc(id)}/pins`),
+    addPin: (id, body) => post(`/api/documents/${enc(id)}/pins`, body, { noRedirect: true }),
+    removePin: (id, judgmentId) => request(`/api/documents/${enc(id)}/pins/${enc(judgmentId)}`, { method: 'DELETE' }),
+    draftParams: (id) => post(`/api/documents/${enc(id)}/draft-params`, {}, { noRedirect: true }),
+  },
 };
 export default api;

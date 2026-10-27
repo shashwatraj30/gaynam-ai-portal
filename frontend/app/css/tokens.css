@@ -1,12 +1,12 @@
 /* Design tokens: the ONLY place raw colour values live (plan §4). */
 :root {
-  --bg:#F6F5F1; --surface:#FFFFFF; --surface-2:#F1F0EB; --line:#E4E2DC;
-  --ink:#1B1D1C; --ink-2:#4A4F4C; --muted:#5C615E;
-  --primary:#1F5C45; --primary-tint:#E5EEE9; --on-primary:#FFFFFF;
-  --danger:#A3271F; --danger-tint:#FBEAE7;
-  --warn:#8A5A00; --warn-tint:#FBF0D9;
-  --info:#2D4E8A; --info-tint:#E8EEF8;
-  --highlight:#F5E6B3; --focus:#2D6CDF; --overlay:rgba(27,29,28,.45);
+  --bg:#F5EEE1; --surface:#FFFBF2; --surface-2:#EEE3CF; --line:#E0D2B5;
+  --ink:#2B2218; --ink-2:#55473A; --muted:#6B5D4E;
+  --primary:#1F5C45; --primary-tint:#E6EDDD; --on-primary:#FFFBF2;
+  --danger:#A3271F; --danger-tint:#FAE6DC;
+  --warn:#8A5A00; --warn-tint:#FBEED1;
+  --info:#2D4E8A; --info-tint:#E9EBF1;
+  --highlight:#F2DD9E; --focus:#2D6CDF; --overlay:rgba(43,34,24,.45);
   --font-serif:"Source Serif 4","Noto Serif Devanagari",Georgia,"Times New Roman",serif;
   --font-sans:"Inter","Noto Sans Devanagari",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --fz: 1;
@@ -15,7 +15,7 @@
   --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s8:32px; --s10:40px; --s12:48px;
   --gutter:40px; --card-pad:24px;
   --r-lg:10px; --r-md:8px; --r-pill:999px;
-  --shadow:0 2px 2px rgba(27,29,28,.06);
+  --shadow:0 2px 2px rgba(43,34,24,.08);
   --bp-md:1024px; --bp-sm:768px; --bp-xs:480px;
   --t-fast:120ms; --t:200ms;
   --z-sidebar:10; --z-topbar:20; --z-drawer:40; --z-modal:50; --z-toast:60;
@@ -23,3 +23,30 @@
 }
 @media (max-width:768px){ :root{ --gutter:16px; --card-pad:16px; --fs-h1:30px; --lh-h1:38px; } }
 @media (prefers-reduced-motion:reduce){ :root{ --t-fast:0ms; --t:0ms; } }
+
+/* Dark theme (contrast checked: ink/surface 14:1, muted/surface 7:1, primary/surface 8:1, chip text on tints >= 7:1).
+   Follows the OS unless Settings pins light or dark via <html data-theme>. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg:#121413; --surface:#1B1E1C; --surface-2:#252927; --line:#383D3A;
+  --ink:#ECEEEC; --ink-2:#C3C9C5; --muted:#A5ACA8;
+  --primary:#74C7A0; --primary-tint:#1F3A2F; --on-primary:#0C1A13;
+  --danger:#FF9A90; --danger-tint:#3F201D;
+  --warn:#F2C05E; --warn-tint:#3B2F12;
+  --info:#97B8F5; --info-tint:#1E2B45;
+  --highlight:#5C4C14; --focus:#86AEFF; --overlay:rgba(0,0,0,.65);
+  --shadow:0 2px 2px rgba(0,0,0,.45);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg:#121413; --surface:#1B1E1C; --surface-2:#252927; --line:#383D3A;
+    --ink:#ECEEEC; --ink-2:#C3C9C5; --muted:#A5ACA8;
+    --primary:#74C7A0; --primary-tint:#1F3A2F; --on-primary:#0C1A13;
+    --danger:#FF9A90; --danger-tint:#3F201D;
+    --warn:#F2C05E; --warn-tint:#3B2F12;
+    --info:#97B8F5; --info-tint:#1E2B45;
+    --highlight:#5C4C14; --focus:#86AEFF; --overlay:rgba(0,0,0,.65);
+    --shadow:0 2px 2px rgba(0,0,0,.45);
+  }
+}

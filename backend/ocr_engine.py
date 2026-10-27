@@ -13,7 +13,7 @@ Designed specifically for Indian Court Filings:
    - Synopsis of Facts
    - Grounds of Appeal / Challenge
    - Prayer / Relief Sought
-4. Performs real-time DPDP Act 2023 PII Anonymization (Aadhaar, PAN, phone, sensitive names).
+4. Performs real-time DPDP Act 2023 PII redaction (Aadhaar, PAN, phone, e-mail; names are not redacted).
 """
 
 import os
@@ -22,27 +22,38 @@ import re
 from typing import Dict, Any, List, Optional
 import pypdf
 
-# Regex patterns for Indian legal documents and PII
-AADHAAR_REGEX = re.compile(r'\b\d{4}\s\d{4}\s\d{4}\b')
-PAN_REGEX = re.compile(r'\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b')
-PHONE_REGEX = re.compile(r'\b(?:\+91|0)?[6-9]\d{9}\b')
-EMAIL_REGEX = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
+# Regex patterns for Indian legal documents and PII.
+# Aadhaar: 12 digits, optionally grouped by spaces/hyphens, never inside a longer digit run (e.g. a 16-digit number).
+AADHAAR_REGEX = re.compile(r'(?<![\d+])(?<!\d[ \t-])\d{4}[ \t-]{0,3}\d{4}[ \t-]{0,3}\d{4}(?![ \t-]?\d)')
+PAN_REGEX = re.compile(r'(?<![A-Za-z0-9])[A-Za-z]{5}\d{4}[A-Za-z](?![A-Za-z0-9])')
+# Indian mobile: optional +91 / 0 prefix, 10 digits starting 6-9, optional single space/hyphen in the middle.
+PHONE_REGEX = re.compile(r'(?<![\d+])(?:\+91[ \t-]?|0[ \t-]?)?[6-9]\d{4}[ \t-]?\d{5}(?!\d)')
+EMAIL_REGEX = re.compile(r'(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}')
 
-# Legal abbreviations normalizer
+# Legal abbreviations normalizer (word-bounded so ordinary words such as "air" or "describe" are not rewritten)
 CITATION_CORRECTIONS = [
-    (re.compile(r'A\s*I\s*R', re.IGNORECASE), 'AIR'),
-    (re.compile(r'S\s*C\s*C', re.IGNORECASE), 'SCC'),
-    (re.compile(r'S\s*C\s*R', re.IGNORECASE), 'SCR'),
-    (re.compile(r'u\s*/\s*s', re.IGNORECASE), 'u/s'),
-    (re.compile(r'u\s*/\s*sec\b', re.IGNORECASE), 'u/s'),
-    (re.compile(r'Cr\s*\.\s*P\s*\.\s*C', re.IGNORECASE), 'Cr.P.C.'),
-    (re.compile(r'C\s*\.\s*P\s*\.\s*C', re.IGNORECASE), 'C.P.C.'),
-    (re.compile(r'I\s*\.\s*P\s*\.\s*C', re.IGNORECASE), 'I.P.C.'),
-    (re.compile(r'N\s*\.\s*I\s*\.\s*Act', re.IGNORECASE), 'N.I. Act'),
-    (re.compile(r'Art\s*\.\s*', re.IGNORECASE), 'Article '),
-    (re.compile(r'v\s*\.\s*s\b|v\s*/\s*s\b', re.IGNORECASE), 'v.'),
-    (re.compile(r'versus', re.IGNORECASE), 'v.')
+    (re.compile(r'\bA\s*I\s*R\b'), 'AIR'),
+    (re.compile(r'\bS\s*C\s*C\b'), 'SCC'),
+    (re.compile(r'\bS\s*C\s*R\b'), 'SCR'),
+    (re.compile(r'\bu\s*/\s*s\b', re.IGNORECASE), 'u/s'),
+    (re.compile(r'\bCr\s*\.\s*P\s*\.\s*C\b(?:\s*\.)?', re.IGNORECASE), 'Cr.P.C.'),
+    (re.compile(r'(?<![A-Za-z.])C\s*\.\s*P\s*\.\s*C\b(?:\s*\.)?', re.IGNORECASE), 'C.P.C.'),
+    (re.compile(r'(?<![A-Za-z.])I\s*\.\s*P\s*\.\s*C\b(?:\s*\.)?', re.IGNORECASE), 'I.P.C.'),
+    (re.compile(r'\bN\s*\.\s*I\s*\.\s*Act\b', re.IGNORECASE), 'N.I. Act'),
+    (re.compile(r'\bArt\s*\.\s+', re.IGNORECASE), 'Article '),
+    (re.compile(r'\bv\s*/\s*s\b', re.IGNORECASE), 'v.'),
+    (re.compile(r'\bversus\b', re.IGNORECASE), 'v.'),
 ]
+
+_STRUCT_START = re.compile(r'^(IN THE|BEFORE|COURT|CASE NO|VERSUS|PETITIONER|RESPONDENT|\d+\.|\(\d+\)|\([a-z]\)|\([ivx]+\)|[A-Z]\.\s|[-•*]\s|PRAYER)', re.I)
+_STRUCT_KEY = re.compile(r'^[A-Z][A-Z0-9 .&/()\-]{3,45}:(\s|$)')
+
+
+def _is_structural_line(line: str) -> bool:
+    if _STRUCT_START.match(line) or _STRUCT_KEY.match(line) or line.endswith(':'):
+        return True
+    return line.isupper() and len(line) > 3
+
 
 def clean_ocr_text(raw_text: str) -> str:
     """Removes scanning artifacts, fixes hyphenated word splits, and normalizes legal typography."""
@@ -62,15 +73,15 @@ def clean_ocr_text(raw_text: str) -> str:
     buffer = ""
     
     for line in lines:
-        stripped = line.strip()
+        stripped = re.sub(r'[ \t]{2,}', ' ', line.strip())
         if not stripped:
             if buffer:
                 cleaned_lines.append(buffer)
                 buffer = ""
             cleaned_lines.append("")
         else:
-            # Check if line looks like header, case number, or bullet point
-            if re.match(r'^(IN THE|BEFORE|COURT|CASE NO|VERSUS|PETITIONER|RESPONDENT|\d+\.|\([a-z]\)|\([ivx]+\)|PRAYER)', stripped, re.I):
+            # Headings, numbered/bulleted items, "KEY: value" lines and all-caps lines stay on their own line.
+            if _is_structural_line(stripped):
                 if buffer:
                     cleaned_lines.append(buffer)
                     buffer = ""
@@ -93,301 +104,62 @@ def clean_ocr_text(raw_text: str) -> str:
     result = re.sub(r'\n{3,}', '\n\n', result)
     return result.strip()
 
+_PII_PATTERNS = (
+    ("EMAIL", EMAIL_REGEX, "[REDACTED_EMAIL_XXXX]"),
+    ("AADHAAR", AADHAAR_REGEX, "[REDACTED_AADHAAR_XXXX]"),
+    ("PAN", PAN_REGEX, "[REDACTED_PAN_XXXX]"),
+    ("PHONE", PHONE_REGEX, "[REDACTED_PHONE_XXXX]"),
+)
+
+
 def anonymize_pii(text: str) -> Dict[str, Any]:
-    """Redacts Aadhaar, PAN, phone numbers, and sensitive identifiers under DPDP Act 2023."""
-    redacted_text = text
-    redactions_found = []
-    
-    # Redact Aadhaar
-    for match in AADHAAR_REGEX.finditer(text):
-        original = match.group()
-        redacted = "[REDACTED_AADHAAR_XXXX]"
-        redacted_text = redacted_text.replace(original, redacted)
-        redactions_found.append({"type": "AADHAAR", "count": 1})
-        
-    # Redact PAN
-    for match in PAN_REGEX.finditer(text):
-        original = match.group()
-        redacted = "[REDACTED_PAN_XXXX]"
-        redacted_text = redacted_text.replace(original, redacted)
-        redactions_found.append({"type": "PAN", "count": 1})
-        
-    # Redact Phone Numbers
-    for match in PHONE_REGEX.finditer(text):
-        original = match.group()
-        redacted = "[REDACTED_PHONE_XXXX]"
-        redacted_text = redacted_text.replace(original, redacted)
-        redactions_found.append({"type": "PHONE", "count": 1})
-        
-    # Redact Email
-    for match in EMAIL_REGEX.finditer(text):
-        original = match.group()
-        redacted = "[REDACTED_EMAIL_XXXX]"
-        redacted_text = redacted_text.replace(original, redacted)
-        redactions_found.append({"type": "EMAIL", "count": 1})
-        
+    """Redacts Aadhaar, PAN, phone numbers and e-mail addresses (DPDP Act 2023).
+
+    Only these identifier patterns are detected. Personal names and addresses are NOT redacted.
+    ``matches`` holds the span (in the input text) of every redaction for previews.
+    """
+    text = text or ""
+    spans: List[Dict[str, Any]] = []
+    for kind, rx, label in _PII_PATTERNS:
+        for m in rx.finditer(text):
+            if any(m.start() < sp["end"] and m.end() > sp["start"] for sp in spans):
+                continue  # already covered by a higher-priority match
+            spans.append({"type": kind, "start": m.start(), "end": m.end(), "label": label})
+    spans.sort(key=lambda sp: sp["start"])
+    out, pos = [], 0
+    for sp in spans:
+        out.append(text[pos:sp["start"]])
+        out.append(sp["label"])
+        pos = sp["end"]
+    out.append(text[pos:])
+    counts: Dict[str, int] = {}
+    for sp in spans:
+        counts[sp["type"]] = counts.get(sp["type"], 0) + 1
     return {
-        "anonymized_text": redacted_text,
-        "total_redactions": len(redactions_found),
-        "audit_redaction_details": redactions_found
+        "anonymized_text": "".join(out),
+        "total_redactions": len(spans),
+        "audit_redaction_details": [{"type": sp["type"], "count": 1} for sp in spans],
+        "redactions": [{"type": k, "count": v} for k, v in counts.items()],
+        "matches": [{"type": sp["type"], "start": sp["start"], "end": sp["end"]} for sp in spans],
     }
 
 def extract_pleading_structure(text: str) -> Dict[str, Any]:
-    """Isolates judicial components from the cleaned brief or police docket."""
-    lines = [l.strip() for l in text.split('\n') if l.strip()]
-    lower = text.lower()
-    
-    # 1. Check if document is an FIR / Police Criminal Docket
-    is_fir = any(k in lower for k in [
-        "first information report", "fir no", "fir number", "police station", "p.s.", 
-        "informant", "g.d. entry", "complainant", "accused", "seizure list", "seized"
-    ])
-    
-    if is_fir:
-        court_name = "Court of Learned Additional Chief Judicial Magistrate (ACJM), Bidhannagar / North 24 Parganas"
-        if "rajasthan" in lower or "jodhpur" in lower:
-            court_name = "Court of Additional Chief Judicial Magistrate, Jodhpur Metropolitan"
-        elif "delhi" in lower:
-            court_name = "Court of Chief Metropolitan Magistrate (CMM), Patiala House Courts, New Delhi"
-            
-        # 1. Dynamic FIR Number and Year
-        fir_match = re.search(r'FIR\s*(?:Number|No\.?)[:\s\*]*([0-9\(\)\/\-]+)', text, re.I)
-        year_match = re.search(r'Year[:\s\*]*([0-9]{4})', text, re.I)
-        if fir_match:
-            raw_fn = fir_match.group(1).replace("()", "0").replace("(", "").replace(")", "").strip()
-            fir_no = raw_fn if len(raw_fn) >= 2 else "04/17"
-        elif "04/17" in lower or "()4/17" in lower or "14004" in lower or "2711" in lower:
-            fir_no = "04/17"
-        elif "06/17" in lower or "14006" in lower or "puja" in lower or "3301" in lower:
-            fir_no = "06/17"
-        elif "07/17" in lower or "14008" in lower or "pradip" in lower:
-            fir_no = "07/17"
-        else:
-            fir_no = "04/17"
-        year_str = year_match.group(1).strip() if year_match else "2017"
-        
-        gd_match = re.search(r'General\s*Diary.*?(?:Number|No\.?|Entry\s*No\.?)[:\s\*]*([0-9\/\-]+)', text, re.I)
-        gd_str = f" • G.D. Entry No. {gd_match.group(1).strip()}" if gd_match else ""
-        
-        ps_match = re.search(r'Police\s*Station[:\s\*]*([A-Za-z0-9\s]+?)(?:\*|\n|District|\Z)', text, re.I)
-        ps_cand = ps_match.group(1).strip() if ps_match else ""
-        ps_name = ps_cand if ps_cand else ("Airport" if "airport" in lower else "")
-        ps_str = f" ({ps_name} P.S.)" if ps_name else ""
-        
-        case_number = f"FIR No. {fir_no}/{year_str}{gd_str}{ps_str}" if "/" not in fir_no else f"FIR No. {fir_no}{gd_str}{ps_str}"
+    """Isolates judicial components from the cleaned brief or police docket.
 
-        
-        # 2. Dynamic Complainant / Informant
-        complainant = "State of West Bengal"
-        comp_match = re.search(r'Complainant\s*[\/\&]*\s*Informant.*?Name[:\s\*]*([A-Za-z\s\.\']+?)(?:\*|\n|Husband|Nationality|Address|\Z)', text, re.I | re.S)
-        if "snesmita" in lower or "pradip dey" in lower or "07/17" in lower or ("354" in lower and "341" in lower):
-            complainant = "State of West Bengal (at the instance of Snesmita Ghosh)"
-            court_name = "Court of Judicial Magistrate / ACJM, Barrackpore, North 24 Parganas"
-        elif "subhra" in lower or "rhisov" in lower or "47/17" in lower or "264/17" in lower or "14048" in lower:
-            complainant = "State of West Bengal (at the instance of Subhra Dutta)"
-            court_name = "Court of Additional Chief Judicial Magistrate (ACJM), Barrackpore, North 24 Parganas"
-        elif comp_match:
-            c_name = comp_match.group(1).strip()
-            if len(c_name) > 2 and c_name.lower() not in ["details", "name", "puja"]:
-                complainant = f"State of West Bengal (at the instance of {c_name})"
-            elif "puja" in lower or "ghosh" in lower:
-                complainant = "State of West Bengal (at the instance of Puja Ghosh)"
-        elif "sahabuddin mondal" in lower:
-            complainant = "State of West Bengal (through Informant SI Sahabuddin Mondal)"
-        elif "puja ghosh" in lower:
-            complainant = "State of West Bengal (at the instance of Puja Ghosh)"
-            
-        # 3. Dynamic Accused Persons
-        accused_list = []
-        if "snesmita" in lower or "pradip dey" in lower or "07/17" in lower or ("354" in lower and "341" in lower):
-            respondent = "Pradip Dey (S/o Tarun Dey, Birati Nilachal Bazar)"
-        elif "subhra" in lower or "rhisov" in lower or "47/17" in lower or "264/17" in lower:
-            respondent = "Rhisov Ghosh, Pravat Ghosh, Chobi Ghosh, Chandana Ghosh"
-        else:
-            acc_section = re.search(r'Suspected\s*\/\s*Accused\s*Persons(.*?)(?=Substance|Notes|Legal Action|Investigation|\Z)', text, re.I | re.S)
-            if acc_section:
-                for line in acc_section.group(1).split('\n'):
-                    m_acc = re.search(r'(?:\d+\.|\*)\s*\**([A-Za-z\s]+)\**\s*(\([^\)]+\))?', line)
-                    if m_acc:
-                        acc_name = m_acc.group(1).strip()
-                        acc_lower = acc_name.lower()
-                        if len(acc_name) > 2 and not any(k in acc_lower for k in ["address", "suspected", "accused", "all", "niranjan", "airport", "pally", "colony"]):
-                            rel = (' ' + m_acc.group(2).strip()) if m_acc.group(2) else ''
-                            accused_list.append(acc_name + rel)
-            if "mihir" in lower or "sukhamoy" in lower or "star lit" in lower or "eco park" in lower:
-                respondent = "Mihir Kr. Bose & Sukhamoy Jha (Board of Managers, Star Lit Housing Owners Association)"
-            elif accused_list:
-                respondent = ", ".join(accused_list[:4])
-            elif "biltu ghosh" in lower or "babla ghosh" in lower:
-                respondent = "Biltu Ghosh (Husband), Babla Ghosh (Father-in-Law), Shipra Ghosh (Mother-in-Law)"
-            elif "samir das" in lower:
-                respondent = "Samir Das, Ranjan Samaddar, Bappa Chowdhury, Subrot Motta & Ors."
-            else:
-                respondent = "Accused Persons (Named in FIR)"
-            
-        # 4. Dynamic Acts & Sections
-        sec_matches = re.findall(r'\b(?:376|417|384|120\s*[bB]|506|34|354\s*\(?[a-dA-D]\)?|354|341|498\s*\(?[aA]\)?|418|326\s*[aA]?|323|324|325|380|379|509|399|402|302|304\s*\(?[aAbB]\)?|307|420|279|338|427|406|468|471|467|465|463)\b', text, re.I)
-        cleaned_secs = [re.sub(r'[\(\)\s]', '', s).upper() for s in sec_matches]
-        unique_secs = list(dict.fromkeys(cleaned_secs))
-        arms_act = bool(re.search(r'\b(?:Arms\s*Act|25\s*\(\s*1\s*\)\s*\(\s*[aA]\s*\))\b', text, re.I))
-        
-        statute_parts = []
-        if unique_secs:
-            statute_parts.append(f"Sections {', '.join(unique_secs)} of the Indian Penal Code, 1860")
-        if arms_act:
-            statute_parts.append("Sections 25(1)(a) & 27 of the Arms Act, 1959")
-            
-        statutory_provisions = "; ".join(statute_parts) if statute_parts else "Relevant Sections of Indian Penal Code, 1860"
-        
-        # 5. Dynamic Framed Questions
-        questions = []
-        letter_map = ["A", "B", "C", "D", "E", "F", "G", "H"]
-        
-        def _next_letter():
-            return letter_map[min(len(questions), len(letter_map) - 1)]
-
-        if any("302" in s for s in unique_secs) or any("307" in s for s in unique_secs):
-            questions.append(f"({_next_letter()}) Whether the ocular and medical evidence on record establishes culpable intention or knowledge required under Sections 302 / 307 IPC?")
-        if any("376" in s for s in unique_secs):
-            questions.append(f"({_next_letter()}) Whether consent was vitiated by misconception of fact ab initio under Section 90 IPC to sustain the charge of rape under Section 376 IPC?")
-        if any("399" in s for s in unique_secs) or any("402" in s for s in unique_secs):
-            questions.append(f"({_next_letter()}) Whether the prosecution evidence and recovery memo establish active preparation and unlawful assembly of five or more persons for committing dacoity under Sections 399 & 402 IPC?")
-        if arms_act:
-            questions.append(f"({_next_letter()}) Whether conscious and unlicensed possession of lethal firearms and live ammunition is established under Sections 25(1)(a) & 27 of the Arms Act, 1959?")
-        if any("420" in s for s in unique_secs) or any("417" in s for s in unique_secs):
-            questions.append(f"({_next_letter()}) Whether the allegations disclose dishonest inducement and fraudulent deception at the very inception to satisfy Sections 420 & 417 IPC?")
-        if any("384" in s for s in unique_secs):
-            questions.append(f"({_next_letter()}) Whether intentional putting of the complainant in fear of injury to dishonestly induce delivery of property is prima facie established under Section 384 IPC?")
-        if any("406" in s for s in unique_secs):
-            questions.append(f"({_next_letter()}) Whether entrustment of property/stridhan and dishonest misappropriation or conversion are prima facie substantiated under Section 406 IPC?")
-        if any("467" in s for s in unique_secs) or any("468" in s for s in unique_secs) or any("471" in s for s in unique_secs):
-            questions.append(f"({_next_letter()}) Whether the allegations of document forgery for cheating and using forged documents as genuine satisfy Sections 467, 468 & 471 IPC?")
-        if any("120B" in s for s in unique_secs) or any("34" in s for s in unique_secs):
-            questions.append(f"({_next_letter()}) Whether a meeting of minds or common intention to execute the alleged criminal acts is prima facie disclosed under Section 120B / 34 IPC?")
-        if any("279" in s for s in unique_secs) or any("338" in s for s in unique_secs) or any("427" in s for s in unique_secs) or any("304A" in s for s in unique_secs):
-            questions.append(f"({_next_letter()}) Whether criminal rashness or negligence on a public way causing hurt/death and property damage is prima facie disclosed under Sections 279, 338, 304A & 427 IPC?")
-        if any("354" in s for s in unique_secs):
-            questions.append(f"({_next_letter()}) Whether the allegations of assault and criminal force with intent to outrage modesty or disrobe satisfy the statutory ingredients of Sections 354 and 354B IPC?")
-        if any("341" in s for s in unique_secs) or any("323" in s for s in unique_secs):
-            questions.append(f"({_next_letter()}) Whether wrongful restraint and voluntarily causing hurt to the complainant are prima facie disclosed under Sections 341 & 323 IPC?")
-        if any("498" in s for s in unique_secs):
-            questions.append(f"({_next_letter()}) Whether the allegations of matrimonial cruelty, physical assault, and unlawful dowry harassment satisfy the essential statutory ingredients under Section 498A IPC?")
-        if any("506" in s for s in unique_secs):
-            questions.append(f"({_next_letter()}) Whether the ingredients of criminal intimidation to cause alarm are prima facie satisfied under Section 506 IPC?")
-            
-        if not questions:
-            questions.append("(A) Whether the allegations in the FIR prima facie disclose commission of cognizable offences warranting framing of charges?")
-            
-        grounds = "\n".join(questions)
-        prayer = f"Prayer for cognizance of offences under {statutory_provisions}, framing of formal charges against {respondent}, and expeditious committal of trial."
-        
-        return {
-            "court": court_name,
-            "case_number": case_number,
-            "petitioner": complainant,
-            "respondent": respondent,
-            "case_title": f"{complainant} v. {respondent}",
-            "facts_summary": text[:2500],
-            "grounds_of_challenge": grounds,
-            "prayer_relief": prayer,
-            "statutory_provisions": statutory_provisions
-        }
-    
-    # 0. Handwritten Script Notice Handler
-    if "NOTICE ON OFFLINE HANDWRITTEN SCRIPT" in text:
-        return {
-            "court": "Subordinate Court / Police Records (Requires Vision Transcription)",
-            "case_number": "Scanned Document Intake",
-            "petitioner": "Informant / Prosecution",
-            "respondent": "Suspect / Accused",
-            "case_title": "State / Informant v. Accused Persons",
-            "facts_summary": "Scanned handwritten police/court document uploaded. Offline OCR detected cursive handwriting; connect Gemini Vision API in Chamber Settings or enter text manually.",
-            "grounds_of_challenge": "Handwritten cursive script requires Gemini 2.5 Flash Vision for neural character transcription.",
-            "prayer_relief": "Connect Gemini API key or enter transcribed pleading text.",
-            "statutory_provisions": "Bharatiya Nagarik Suraksha Sanhita / Cr.P.C."
-        }
-
-    # 2. Standard High Court / Supreme Court Pleading
-    court_name = "High Court of Judicature for Rajasthan at Jodhpur"
-    if "supreme court" in lower:
-        court_name = "Supreme Court of India"
-    elif "delhi" in lower:
-        court_name = "High Court of Delhi at New Delhi"
-    elif "bombay" in lower:
-        court_name = "High Court of Judicature at Bombay"
-    elif "calcutta" in lower or "kolkata" in lower or "west bengal" in lower:
-        court_name = "High Court at Calcutta"
-    elif "madras" in lower or "chennai" in lower:
-        court_name = "High Court of Judicature at Madras"
-
-    case_number = "S.B. Civil Writ Petition No. 4521/2024"
-    petitioner = "Petitioner / Appellant"
-    respondent = "Respondent / State"
-    
-    for line in lines[:20]:
-        if re.search(r'HIGH COURT|SUPREME COURT|DISTRICT COURT|TRIBUNAL|COURT OF', line, re.I):
-            court_name = line.strip()
-            break
-            
-    for line in lines[:30]:
-        case_match = re.search(r'(?:S\.B\.|D\.B\.|CASE|PETITION|APPEAL|WRIT|W\.P\.|SLP|C\.R\.P\.|APPLICATION|MISC\.|FIR)[^\n]{2,60}(?:NO\.?|NUMBER|\/)\s*[A-Z0-9\.\s\/\-]+', line, re.I)
-        if case_match:
-            case_number = case_match.group(0).strip()
-            break
-            
-    full_header = "\n".join(lines[:45])
-    v_match = re.search(r'([A-Za-z0-9\s\.\,\&\(\)\'\"]+?)\s+(?:VERSUS|V\.|VS\.)\s+([A-Za-z0-9\s\.\,\&\(\)\'\"]+)', full_header, re.I)
-    if v_match:
-        p_cand = v_match.group(1).split('\n')[-1].replace("PETITIONER", "").replace("APPELLANT", "").strip(" .:-")
-        r_cand = v_match.group(2).split('\n')[0].replace("RESPONDENT", "").replace("DEFENDANT", "").strip(" .:-")
-        if 2 < len(p_cand) < 120:
-            petitioner = p_cand
-        if 2 < len(r_cand) < 120:
-            respondent = r_cand
-
-    facts_blocks = []
-    grounds_blocks = []
-    prayer_blocks = []
-    current_section = "FACTS"
-    
-    for line in lines:
-        l = line.lower()
-        if "prayer" in l or "wherefore" in l or "relief sought" in l:
-            current_section = "PRAYER"
-        elif "ground" in l or "submissions" in l or "contentions" in l or "questions of law" in l or "issues" in l:
-            current_section = "GROUNDS"
-        elif "facts" in l or "synopsis" in l or "brief background" in l:
-            current_section = "FACTS"
-            
-        if current_section == "FACTS":
-            facts_blocks.append(line)
-        elif current_section == "GROUNDS":
-            grounds_blocks.append(line)
-        elif current_section == "PRAYER":
-            prayer_blocks.append(line)
-            
-    facts_text = "\n".join(facts_blocks[:45]) if facts_blocks else text[:1500]
-    grounds_text = "\n".join(grounds_blocks[:45]) if grounds_blocks else "(A) Whether the impugned order violates the principles of natural justice?\n(B) Whether the findings are contrary to settled statutory mandate and binding Supreme Court precedent?"
-    prayer_text = "\n".join(prayer_blocks[:20]) if prayer_blocks else "It is most respectfully prayed that this Hon'ble Court may be pleased to allow the petition and quash the impugned order/proceedings in the interest of justice."
-    
-    statute_matches = re.findall(r'(?:Section\s+\d+[A-Z]*(?:\([0-9a-z]+\))*\s+of\s+(?:the\s+)?[A-Za-z\s,]+(?:Act|Code|Sanhita)(?:,\s*\d{4})?|Article\s+\d+[A-Z]*(?:\(\d+\))?\s+of\s+the\s+Constitution(?:\s+of\s+India)?|Section\s+\d+[A-Z]*\s+(?:Cr\.?P\.?C\.?|C\.?P\.?C\.?|I\.?P\.?C\.?|BNS|BNSS|NI\s+Act|Arbitration\s+Act))', text, re.I)
-    unique_statutes = list(dict.fromkeys([s.strip() for s in statute_matches]))
-    if not unique_statutes:
-        unique_statutes = [
-            "Article 226 of the Constitution of India",
-            "Article 14 & 21 of the Constitution of India"
-        ]
-        
+    Everything is read from the text itself; a component that is not found is returned as ''.
+    """
+    from document_parser import extract_fields
+    fields, issues = extract_fields(text)
     return {
-        "court": court_name,
-        "case_number": case_number,
-        "petitioner": petitioner,
-        "respondent": respondent,
-        "case_title": f"{petitioner} v. {respondent}",
-        "facts_summary": facts_text[:2500],
-        "grounds_of_challenge": grounds_text[:2500],
-        "prayer_relief": prayer_text[:1200],
-        "statutory_provisions": ", ".join(unique_statutes[:6])
+        "court": fields["court"],
+        "case_number": fields["case_number"],
+        "petitioner": fields["petitioner"],
+        "respondent": fields["respondent"],
+        "case_title": fields["case_title"],
+        "facts_summary": fields["facts"],
+        "grounds_of_challenge": "\n".join(f"({chr(65 + i)}) {q}" for i, q in enumerate(issues)),
+        "prayer_relief": fields["prayer"],
+        "statutory_provisions": fields["statutory_provisions"],
     }
 
 
@@ -668,15 +440,21 @@ SI Basudeb Mukherjee directed to take up the investigation."""
     return ""
 
 
-def process_scanned_brief(file_path: str, client_extracted_text: Optional[str] = None, api_key: Optional[str] = None) -> Dict[str, Any]:
-    """Complete OCR pipeline: Extracts, cleans, anonymizes, and parses an Indian court document (PDF, DOCX, TXT, or scanned images)."""
+def process_scanned_brief(file_path: str, client_extracted_text: Optional[str] = None, api_key: Optional[str] = None,
+                          sample: bool = False) -> Dict[str, Any]:
+    """Complete OCR pipeline: Extracts, cleans, anonymizes, and parses an Indian court document (PDF, DOCX, TXT, or scanned images).
+
+    Canned benchmark transcriptions are used ONLY when ``sample`` is True. When nothing can be read the result has
+    source "failed" and empty text (no placeholder text is ever invented). ``full_text`` is the complete cleaned,
+    redacted text; ``sanitized_text_preview`` is its first 2,500 characters."""
     extracted_raw = ""
     is_image = False
     is_scanned_pdf = False
     image_meta = {}
     ext = os.path.splitext(file_path)[1].lower()
     vlm_used = False
-    source = "digital_text"  # B6: digital_text | ocr | vlm | canned_sample | fallback
+    source = "digital_text"  # digital_text | ocr | vlm | canned_sample | failed
+    pages = None
     
     # 1. Image formats detection & metadata extraction
     if ext in [".jpg", ".jpeg", ".png", ".webp", ".tiff", ".tif", ".bmp"]:
@@ -700,6 +478,7 @@ def process_scanned_brief(file_path: str, client_extracted_text: Optional[str] =
     elif ext == ".pdf":
         try:
             reader = pypdf.PdfReader(file_path)
+            pages = len(reader.pages)
             for page in reader.pages:
                 t = page.extract_text()
                 if t:
@@ -732,10 +511,18 @@ def process_scanned_brief(file_path: str, client_extracted_text: Optional[str] =
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 extracted_raw = f.read()
         except Exception as e:
-            extracted_raw = "Error reading brief: " + str(e)
+            print(f"Text read error: {e}")
+            extracted_raw = ""
+
+    # 2b. Explicit sample request: use the canned benchmark transcription, no external calls.
+    if sample and len(extracted_raw.strip()) < 60:
+        matched_docket = _match_known_judicial_docket(file_path)
+        if matched_docket:
+            extracted_raw = matched_docket
+            source = "canned_sample"
 
     # 3. For images or scanned PDFs, execute Multimodal Vision / Native Apple Vision / Benchmark Recognition
-    if (is_image or is_scanned_pdf) and len(extracted_raw.strip()) < 60:
+    if (is_image or is_scanned_pdf) and len(extracted_raw.strip()) < 60 and source != "canned_sample":
         gemini_key = api_key or os.environ.get("GEMINI_API_KEY")
         if _is_valid_gemini_key(gemini_key):
             import base64
@@ -769,7 +556,10 @@ Transcribe all text with forensic fidelity:
 - Substance of the complaint / Factual Matrix, Grounds, and Prayer
 Do not invent anything. Transcribe the document accurately."""
 
-                models_to_try = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite']
+                models_to_try = [x.strip() for x in os.environ.get(
+                    'GYANAM_GEMINI_VISION_MODELS',
+                    'gemini-3.5-flash,gemini-3-flash-preview,gemini-flash-lite-latest'
+                ).split(',') if x.strip()]
                 for model_name in models_to_try:
                     try:
                         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={gemini_key.strip()}"
@@ -789,21 +579,16 @@ Do not invent anything. Transcribe the document accurately."""
                                 extracted_raw = text_out
                                 vlm_used = True
                                 source = "vlm"
-                                print(f"✓ LIVE Multimodal Vision: Successfully transcribed via Google {model_name}!")
+                                try:
+                                    print(f"[OK] Multimodal Vision: Successfully transcribed via Google {model_name}!")
+                                except UnicodeEncodeError:
+                                    print(f"Multimodal Vision: Successfully transcribed via Google {model_name}!")
                                 break
                     except Exception as m_err:
                         print(f"Vision API attempt with {model_name} failed: {m_err}")
                         continue
             except Exception as e:
                 print(f"Gemini Multimodal Vision API pipeline error: {e}")
-
-        # Next: Check known judicial benchmark signatures
-        if len(extracted_raw.strip()) < 60:
-            matched_docket = _match_known_judicial_docket(file_path)
-            if matched_docket:
-                extracted_raw = matched_docket
-                vlm_used = True
-                source = "canned_sample"
 
         # Next: Run Cross-Platform ONNX Neural OCR (RapidOCR) or macOS Native Apple Vision Framework
         if len(extracted_raw.strip()) < 60:
@@ -817,61 +602,16 @@ Do not invent anything. Transcribe the document accurately."""
                 print(f"✓ Local Neural OCR extracted {len(vision_text)} chars from {os.path.basename(file_path)}")
 
 
-        # Final dynamic fallback if document is purely cursive/low-res without a live Gemini key
-        if len(extracted_raw.strip()) < 40:
-            base_name = os.path.splitext(os.path.basename(file_path))[0].replace("_", " ").replace("-", " ").title()
-            clean_party = base_name if len(base_name) > 3 else "Petitioner / Informant"
-            source = "fallback"
-            is_fir_context = is_image or any(k in file_path.lower() for k in ["fir", "police", "ps", "crime", "docket", "seizure", "complaint", "accused", "image", "jpeg", "jpg", "png"])
-            if is_fir_context:
-                extracted_raw = f"""FIRST INFORMATION REPORT (Form No. 14004 / Section 154 Cr.P.C.)
-POLICE STATION: Airport P.S. / Judicial Magistrate Jurisdiction
-YEAR: 2024 | DOCKET: {base_name} | REGISTERED: State of Rajasthan / State of West Bengal
-
-ACTS & SECTIONS:
-1. Indian Penal Code, 1860 — Sections 341, 323, 506 & 34 IPC
-2. Bharatiya Nyaya Sanhita, 2023 / Code of Criminal Procedure, 1973
-
-GENERAL DIARY & OCCURRENCE DETAILS:
-- General Diary Reference: Entry No. 412/24
-- Occurrence: Criminal complaint submitted regarding commission of cognizable offences
-- Place of Occurrence: Jurisdictional Territory of Police Station
-
-COMPLAINANT / INFORMANT:
-{clean_party} (Complainant / Aggrieved Informant)
-
-ACCUSED PARTICULARS:
-Named Accused Persons & Unknown Associates
-
-SUBSTANCE OF COMPLAINT / POLICE ACTION:
-The informant submitted a formal written complaint regarding incident of unlawful assault, harassment, and criminal intimidation. Cognizable offences having been disclosed prima facie, formal FIR is recorded for thorough investigation.
-
-INVESTIGATION DIRECTED:
-Sub-Inspector of Police directed to take up immediate forensic investigation."""
-            else:
-                extracted_raw = f"""IN THE HIGH COURT OF JUDICATURE FOR RAJASTHAN AT JODHPUR
-S.B. CIVIL WRIT PETITION / CRIMINAL MISC. PETITION NO. 4521 OF 2024
-DOCUMENT DOCKET: {base_name}
-
-{clean_party} VERSUS State of Rajasthan & Ors.
-
-FACTS OF THE CASE:
-1. The present petition / docket ({base_name}) arises out of the impugned order and proceedings initiated by the respondent authorities.
-2. The petitioner / informant submits that the impugned action was undertaken without adherence to mandatory statutory safeguards and in violation of the principles of audi alteram partem.
-3. All relevant documentary annexures and certified copies have been placed on record for judicial scrutiny.
-
-GROUNDS OF CHALLENGE:
-(A) Whether the impugned proceedings and order suffer from jurisdictional infirmity and breach of natural justice?
-(B) Whether the action of the respondent authorities conforms to the mandatory statutory preconditions under Article 226 of the Constitution of India and Section 482 Cr.P.C. / Section 528 BNSS?
-
-PRAYER:
-Wherefore, it is most respectfully prayed that this Hon'ble Court may be pleased to call for the record, quash the impugned order/proceedings, and pass such further orders as deemed just and proper in the interest of justice."""
-
     # 4. Apply neural cleanup and DPDP redaction
     cleaned = clean_ocr_text(extracted_raw)
+    if not cleaned.strip():
+        source = "failed"
+        cleaned = ""
     anonymized = anonymize_pii(cleaned)
     parsed_meta = extract_pleading_structure(anonymized["anonymized_text"])
-    
+    if pages is None and is_image:
+        pages = 1
+
     return {
         "success": True,
         "source": source,
@@ -881,9 +621,11 @@ Wherefore, it is most respectfully prayed that this Hon'ble Court may be pleased
         "vlm_transcription_used": vlm_used,
         "raw_character_count": len(extracted_raw),
         "cleaned_character_count": len(cleaned),
-        "is_ocr_enhanced": True,
+        "is_ocr_enhanced": source in ("ocr", "vlm", "canned_sample"),
         "dpdp_redactions_applied": anonymized["total_redactions"],
+        "redactions": anonymized["redactions"],
+        "pages": pages,
         "metadata": parsed_meta,
-        "sanitized_text_preview": anonymized["anonymized_text"][:2500]
+        "full_text": anonymized["anonymized_text"],
+        "sanitized_text_preview": anonymized["anonymized_text"][:2500],
     }
-

@@ -15,9 +15,26 @@ import { skeleton } from '../ui/skeleton.js';
 import { errorState } from '../ui/error-state.js';
 import { input, field } from '../ui/form.js';
 import { formatDateTime } from '../format.js';
+import { toast } from '../ui/toast.js';
+import { confirmDialog } from '../ui/confirm.js';
 import { FILTERS, normalizeRows, countByStatus, filterDrafts, validFilter, rowAction } from './lib/drafts-logic.js';
 
 addMessages('en', en); addMessages('hi', hi);
+
+const errMsg = (e, fallback) => (e && e.message && e.status !== 0 ? e.message : fallback);
+
+function saveBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = h('a', { href: url, download: name, class: 'sr-only' });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+async function downloadDocx(r) {
+  try {
+    saveBlob(await api.exportDocx(r.id), `${String(r.case_number || `draft-${r.id}`).replace(/[^A-Za-z0-9._-]+/g, '_')}.docx`);
+    toast(t('drafts.docx.done'), { tone: 'primary' });
+  } catch (e) { toast(e?.message || t('drafts.docx.failed'), { tone: 'danger' }); }
+}
 
 
 async function render(params, ctx) {
@@ -31,6 +48,20 @@ async function render(params, ctx) {
       h('div', {}, h('h1', { class: 'g-page__title' }, t('drafts.title')), h('p', { class: 'g-page__lede' }, t('drafts.lede'))),
       h('div', { class: 'g-page__actions' }, button({ label: t('drafts.new'), variant: 'primary', icon: 'plus', href: '#/drafts/new' }))),
     body);
+
+  async function deleteDraftRow(r) {
+    if (r.status === 'FINAL_SEALED') return;
+    if (!(await confirmDialog({
+      title: t('drafts.deleteTitle'), message: t('drafts.deleteMsg'), confirmLabel: t('drafts.delete'), tone: 'danger',
+    }))) return;
+    try {
+      await api.deleteDraft(r.id);
+      toast(t('drafts.deleted'), { tone: 'primary' });
+      load();
+    } catch (e) {
+      toast(e?.code === 'DRAFT_FINALIZED' ? errMsg(e, t('drafts.deleteFinalized')) : errMsg(e, t('drafts.deleteFailed')), { tone: 'danger' });
+    }
+  }
 
   function paintList(list) {
     const counts = countByStatus(rows);
@@ -56,7 +87,7 @@ async function render(params, ctx) {
           { key: 'court', label: t('drafts.col.court') },
           { key: 'status', label: t('drafts.col.status'), render: (r) => statusChip(r.status) },
           { key: 'date_created', label: t('drafts.col.created'), render: (r) => formatDateTime(r.date_created) },
-          { key: 'act', label: t('drafts.col.actions'), render: (r) => { const a = rowAction(r); return button({ label: t(`drafts.action.${a.key}`), variant: 'secondary', href: a.href, ariaLabel: `${t(`drafts.action.${a.key}`)} #${r.id}` }); } },
+          { key: 'act', label: t('drafts.col.actions'), render: (r) => { const a = rowAction(r); return h('div', { class: 'drafts__acts' }, button({ label: t(`drafts.action.${a.key}`), variant: 'secondary', href: a.href, ariaLabel: `${t(`drafts.action.${a.key}`)} #${r.id}` }), button({ label: t('drafts.docx'), variant: 'ghost', icon: 'download', ariaLabel: t('drafts.docxAria', { id: r.id }), onClick: (e) => { e.stopPropagation(); downloadDocx(r); } }), r.status === 'FINAL_SEALED' ? null : button({ label: t('drafts.delete'), variant: 'ghost', ariaLabel: t('drafts.deleteAria', { id: r.id }), onClick: (e) => { e.stopPropagation(); deleteDraftRow(r); } })); } },
         ],
         rows: shown,
         onRowClick: (r) => { location.hash = rowAction(r).href; },
