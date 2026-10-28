@@ -4,7 +4,7 @@
 // Freshness comes from api.sync.status().sync_state.last_sync_timestamp (real value, plan §8).
 import { h, icon, clear } from '../dom.js';
 import { t, getLang, setLang } from '../i18n/index.js';
-import { api } from '../api.js';
+import { api, getToken } from '../api.js';
 import { formatRelative } from '../format.js';
 import { canPreview } from './role-preview-logic.js';
 import { buildPreviewPicker } from './role-preview.js';
@@ -52,6 +52,7 @@ export function buildTopbar({ user, can, onMenu, onOpenPalette, onSignOut, onToa
     ? h('button', { class: 'g-link-btn', type: 'button', onClick: doSync }, t('top.syncNow')) : null;
   if (syncBtn) fresh.append(syncBtn);
   async function refreshFreshness() {
+    if (!getToken()) return; // shell chrome mounts even on the public sign-in page; nothing to fetch pre-login
     try {
       const s = await api.sync.status({ noRedirect: true });
       const ts = s?.sync_state?.last_sync_timestamp || s?.last_sync_timestamp;

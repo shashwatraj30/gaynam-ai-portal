@@ -118,7 +118,15 @@ def _sections(lines: List[str]) -> Dict[str, List[str]]:
 
 def _is_fir(text: str) -> bool:
     low = text.lower()
-    return "first information report" in low or bool(re.search(r"\bfir\s*no", low)) or "police station" in low[:600]
+    if "first information report" in low or "police station" in low[:600]:
+        return True
+    if not re.search(r"\bfir\s*no", low):
+        return False
+    # A bare "FIR No. ..." mention is not enough on its own: a pleading (bail application, writ, appeal)
+    # routinely cites an FIR number while discussing it, but is not itself an FIR. An explicit "A versus B"
+    # cause-title line is the hallmark of a court pleading, so it overrides the "fir no" match.
+    has_versus_line = any(_VERSUS_LINE_RE.match(l) or _VERSUS_INLINE_RE.match(l) for l in text.splitlines()[:60])
+    return not has_versus_line
 
 
 def _fir_block(text: str, heading_rx: str) -> str:

@@ -95,15 +95,18 @@ def test_empty_search_state(page, login):
     assert not page.tracker.errors(ignore=CONSOLE_IGNORE)
 
 
-def test_ocr_fallback_shows_sample_banner(page, login, tmp_path):
+def test_ocr_fallback_shows_failed_banner(page, login, tmp_path):
+    # The engine never fabricates text: a blank scan yields an honest "could not be read" state,
+    # not a silently-substituted canned sample. The empty case_title/facts fields then block
+    # "Continue to confirm issues" via normal required-field validation (no disabled attribute).
     login("Clerk")
     goto(page, "/matters/new")
     png = blank_png(str(tmp_path / "blank_scan.png"))
     page.locator("input[type=file]").set_input_files(png)
-    expect(page.get_by_text("Sample data", exact=False).first).to_be_visible(timeout=60000)
-    expect(page.get_by_label("Use as sample data")).to_be_visible()
-    cont = page.get_by_role("button", name="Continue to confirm issues")
-    assert cont.is_disabled() or cont.get_attribute("aria-disabled") == "true"
+    expect(page.get_by_text("The text could not be read", exact=False).first).to_be_visible(timeout=60000)
+    page.get_by_role("button", name="Continue to confirm issues").click()
+    expect(page.get_by_text("Check what we read")).to_be_visible()
+    expect(page.get_by_text("This field is required.", exact=False).first).to_be_visible()
 
 
 def test_unknown_route_is_404_page(page, login):

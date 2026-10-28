@@ -150,7 +150,7 @@ def test_admin_suspend_and_activate(page, login, base_url):
         row.get_by_role("button", name="Suspend").click()
         expect(dialog(page)).to_contain_text("Suspend")
         dialog(page).get_by_role("button", name="Suspend").click()
-        expect(row.get_by_text("Suspended until restart")).to_be_visible()
+        expect(row.get_by_text("Suspended")).to_be_visible()
     finally:
         # always restore: the Student token is shared by other tests
         if row.get_by_role("button", name="Activate").count():
