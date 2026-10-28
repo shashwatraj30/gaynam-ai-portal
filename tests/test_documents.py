@@ -310,4 +310,6 @@ def test_archive_hides_from_list(client, hdr):
     assert client.get(f"/api/documents/{d['id']}", headers=h).status_code == 200
     assert client.patch(f"/api/documents/{d['id']}", json={"title": "x"}, headers=h).status_code == 409
     assert _audit_rows("DOCUMENT_ARCHIVED", d["id"])
-    assert client.delete(f"/api/documents/{d['id']}", headers=h).status_code in (404, 405)
+    # An archived document with no linked drafts can still be permanently deleted (plan: delete feature).
+    assert client.delete(f"/api/documents/{d['id']}", headers=h).status_code == 200
+    assert client.get(f"/api/documents/{d['id']}", headers=h).status_code == 404

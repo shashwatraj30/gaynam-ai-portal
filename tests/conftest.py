@@ -21,7 +21,10 @@ for _n in ("USER_MANUAL.md", "COMMERCIAL_PROPOSAL_GYANAM_AI.md"):
 os.environ["GYANAM_JWT_SECRET"] = "test-secret-not-for-production"
 os.environ["GYANAM_ENFORCE_AUTH"] = "1"
 os.environ["GYANAM_ALLOW_LEGACY_HEADER"] = "0"  # default is off; legacy tests opt in with monkeypatch
-os.environ.pop("GEMINI_API_KEY", None)
+# Empty, not popped: envload.load_env() only fills a key that is *absent* from os.environ, so popping
+# it here would let a real .env file on the machine silently repopulate it (and tests would start
+# making live Gemini calls). An empty string stays "present", so it can never be backfilled.
+os.environ["GEMINI_API_KEY"] = ""
 
 import build_fixture  # noqa: E402
 
