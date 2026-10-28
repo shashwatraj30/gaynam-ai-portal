@@ -2,10 +2,11 @@ import os
 import sys
 import json
 import io
+import csv
 import sqlite3
 import re
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 import uuid
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query, Header, Depends, Request
@@ -20,7 +21,7 @@ if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 import envload  # noqa: E402  (loads <project>/.env into os.environ before anything reads it)
 envload.load_env(os.path.join(PROJECT_ROOT, ".env"))
-from database import get_connection, DB_PATH, migrate_draft_columns
+from database import get_connection, DB_PATH, run_migrations
 from citation_verifier import verify_all_text_citations, verify_citation
 from judgment_engine import (
     generate_15_section_judgment, search_relevant_precedents,
@@ -31,12 +32,14 @@ from auth import (
     create_access_token, decode_access_token, authenticate_user,
     INSTITUTIONAL_DIRECTORY, ROLES_PERMISSIONS, LoginRequest, SSOLoginRequest,
     get_current_user_from_header, require, require_any, get_client_ip, AuthError, auth_error_handler,
-    check_permission
+    check_permission, is_legacy_request, is_user_suspended
 )
 from ocr_engine import process_scanned_brief, anonymize_pii, clean_ocr_text
 from court_sync_daemon import run_incremental_sync, get_sync_status, get_sync_history
 from export_engine import export_judgment_to_docx, render_printable_html
 from audit_dpdp import record_tamper_evident_event, verify_ledger_integrity, get_ledger_blocks
+import drafts_service as drafts_svc
+import search_service as search_svc
 
 app = FastAPI(
     title="Gyanam AI — NLU Jodhpur Edition",
@@ -47,9 +50,7 @@ app = FastAPI(
 app.add_exception_handler(AuthError, auth_error_handler)
 
 try:
-    _c = get_connection()
-    migrate_draft_columns(_c)
-    _c.close()
+    run_migrations()
 except Exception as _e:
     print(f"Startup migration warning: {_e}")
 
@@ -102,6 +103,11 @@ class SearchRequest(BaseModel):
     judge: Optional[str] = ""
     precedent_status: Optional[str] = "ALL"
     limit: Optional[int] = 20
+    # v3 (docs/API_V3_CONTRACT.md): offset/sort/year filters, applied in search_service.run_search
+    offset: Optional[int] = 0
+    sort: Optional[str] = "bench"
+    year_from: Optional[int] = None
+    year_to: Optional[int] = None
 
 class DraftRequest(BaseModel):
     case_title: str
@@ -113,6 +119,15 @@ class DraftRequest(BaseModel):
     issues: str
     statutory_provisions: str
     gemini_api_key: Optional[str] = None
+    # v3 (docs/API_V3_CONTRACT.md)
+    sections: Optional[List[int]] = None
+    current: Optional[Dict[str, Any]] = None
+    outcome: Optional[str] = None
+    authorities: Optional[List[Dict[str, Any]]] = None
+    document_id: Optional[str] = None
+    petitioner: Optional[str] = None
+    respondent: Optional[str] = None
+    prayer: Optional[str] = None
 
 class SaveDraftRequest(BaseModel):
     draft_id: Optional[int] = None
@@ -128,6 +143,12 @@ class SaveDraftRequest(BaseModel):
     status: Optional[str] = "DRAFT"
     reviewed_by: Optional[str] = "Hon'ble Judicial User"
     version: Optional[int] = None
+    # v3
+    document_id: Optional[str] = None
+    petitioner: Optional[str] = None
+    respondent: Optional[str] = None
+    prayer: Optional[str] = None
+    outcome: Optional[str] = None
 
 class AnonymizeRequest(BaseModel):
     text: str
@@ -235,8 +256,27 @@ def enrich_search_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return rows
 
 # ----------------- SYSTEM STATUS & TELEMETRY -----------------
+APP_VERSION = "3.0.0"
+
+def _optional_user(request: Request) -> Optional[Dict[str, Any]]:
+    """Valid, non-suspended bearer token -> its claims; anything else -> None (never raises)."""
+    auth_h = request.headers.get("authorization", "")
+    if not auth_h.startswith("Bearer "):
+        return None
+    try:
+        claims = decode_access_token(auth_h.split(" ", 1)[1].strip())
+    except Exception:
+        return None
+    if is_user_suspended(claims.get("user_id") or claims.get("sub")):
+        return None
+    return claims
+
 @app.get("/api/status")
-def get_system_status():
+def get_system_status(request: Request):
+    """Tokenless callers (health checks) get only {status, version, time}; signed-in callers get the full payload."""
+    base = {"status": "ONLINE", "version": APP_VERSION, "time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    if _optional_user(request) is None and not is_legacy_request(request):
+        return base
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM judgments")
@@ -253,12 +293,12 @@ def get_system_status():
     sync_stat = get_sync_status()
 
     return {
-        "status": "ONLINE",
+        **base,
         "system_name": "Gyanam AI — NLU Jodhpur Edition (Powered by Kelyvo)",
         "attribution": "Powered by Kelyvo",
         "total_judgments_indexed": total_cases,
-        "database_storage_path": "Secure Institutional NVMe Storage (/opt/gyanam_ai/data/gyanam_legal.db)",
-        "search_engine": "SQLite FTS5 Hardware-Accelerated BM25",
+        "database_storage_path": os.path.basename(DB_PATH),
+        "search_engine": "SQLite FTS5 BM25",
         "court_distribution": courts_dist,
         "status_distribution": status_dist,
         "sync_telemetry": sync_stat,
@@ -269,7 +309,13 @@ def get_system_status():
     }
 
 @app.get("/api/dashboard_metrics")
-def get_dashboard_metrics():
+def get_dashboard_metrics(request: Request, _user: Dict[str, Any] = Depends(get_current_user_from_header)):
+    """Role-scoped: corpus counts for everyone; activity counts and recent audit rows only for roles that may see them."""
+    request.state.user = _user
+    legacy = getattr(request.state, "legacy_fallback", False)
+    can_audit = legacy or check_permission(_user, "VIEW_AUDIT")
+    can_activity = can_audit or check_permission(_user, "DRAFT_FULL")
+    can_sync = can_audit or check_permission(_user, "MANAGE_CORPUS")
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM judgments")
@@ -285,50 +331,42 @@ def get_dashboard_metrics():
     cursor.execute("SELECT precedent_status, COUNT(*) as c FROM judgments GROUP BY precedent_status")
     status_counts = {r['precedent_status']: r['c'] for r in [dict(x) for x in cursor.fetchall()]}
 
-    cursor.execute("SELECT COUNT(*) FROM audit_logs WHERE action = 'SEARCH_QUERY'")
-    search_count = cursor.fetchone()[0] or 0
-
-    cursor.execute("SELECT COUNT(DISTINCT user_name) FROM audit_logs WHERE user_name IS NOT NULL AND user_name != ''")
-    active_users = cursor.fetchone()[0] or 0
-
-    cursor.execute("SELECT COUNT(*) FROM audit_logs WHERE action LIKE '%REDACT%' OR action LIKE '%ANONYMI%'")
-    redaction_events = cursor.fetchone()[0] or 0
-
-    try:
-        cursor.execute("SELECT COUNT(*) FROM cryptographic_audit_ledger")
-        ledger_blocks = cursor.fetchone()[0] or 0
-    except sqlite3.Error:
-        ledger_blocks = 0
-
-    cursor.execute("SELECT COUNT(*) FROM draft_judgments")
-    draft_count = cursor.fetchone()[0]
-
-    cursor.execute("SELECT timestamp, user_name, user_role, action, details FROM audit_logs ORDER BY id DESC LIMIT 8")
-    recent_activity = [dict(r) for r in cursor.fetchall()]
-
-    conn.close()
-
-    sync_stat = get_sync_status()
-
-    return {
+    out: Dict[str, Any] = {
         "total_judgments": total_cases,
         "supreme_court_count": sc_cases,
         "high_court_count": hc_cases,
         "top_courts": top_courts,
         "status_counts": status_counts,
-        "searches_performed": search_count,
-        "drafts_created": draft_count,
-        "active_users": active_users,
-        "sync_status": sync_stat,
-        "system_health": {
-            "fts5_retrieval_latency": None,
-            "storage_path": None,
+    }
+
+    if can_activity:
+        cursor.execute("SELECT COUNT(*) FROM audit_logs WHERE action = 'SEARCH_QUERY'")
+        out["searches_performed"] = cursor.fetchone()[0] or 0
+        cursor.execute("SELECT COUNT(*) FROM draft_judgments")
+        out["drafts_created"] = cursor.fetchone()[0]
+
+    if can_audit:
+        cursor.execute("SELECT COUNT(DISTINCT user_name) FROM audit_logs WHERE user_name IS NOT NULL AND user_name != ''")
+        out["active_users"] = cursor.fetchone()[0] or 0
+        cursor.execute("SELECT COUNT(*) FROM audit_logs WHERE action LIKE '%REDACT%' OR action LIKE '%ANONYMI%'")
+        redaction_events = cursor.fetchone()[0] or 0
+        try:
+            cursor.execute("SELECT COUNT(*) FROM cryptographic_audit_ledger")
+            ledger_blocks = cursor.fetchone()[0] or 0
+        except sqlite3.Error:
+            ledger_blocks = 0
+        out["system_health"] = {
             "air_gap_status": "EXTERNAL_AI_ENABLED" if os.environ.get("GEMINI_API_KEY") else "LOCAL_ONLY",
             "dpdp_redactions_total": redaction_events,
-            "sha256_ledger_blocks": ledger_blocks
-        },
-        "recent_activity": recent_activity
-    }
+            "sha256_ledger_blocks": ledger_blocks,
+        }
+        cursor.execute("SELECT timestamp, user_name, user_role, action, details FROM audit_logs ORDER BY id DESC LIMIT 8")
+        out["recent_activity"] = [dict(r) for r in cursor.fetchall()]
+
+    conn.close()
+    if can_sync:
+        out["sync_status"] = get_sync_status()
+    return out
 
 # ----------------- AUTHENTICATION & RBAC -----------------
 @app.post("/api/auth/login")
@@ -377,169 +415,30 @@ def get_current_user_profile(user: Dict[str, Any] = Depends(get_current_user_fro
 
 @app.get("/api/auth/roles")
 def get_available_roles():
+    """Public sign-in cards only: no emails, badge ids or permission lists."""
     return {
-        "roles": ROLES_PERMISSIONS,
-        "directory": list(INSTITUTIONAL_DIRECTORY.values())
+        "roles": {k: {"title": v.get("title"), "scope_access": v.get("scope_access")} for k, v in ROLES_PERMISSIONS.items()},
+        "directory": [{
+            "role": u.get("role"),
+            "full_name": u.get("full_name"),
+            "designation": u.get("designation"),
+            "institution": u.get("institution"),
+            "scope_role": u.get("scope_role"),
+        } for u in INSTITUTIONAL_DIRECTORY.values()],
     }
 
 # ----------------- SEARCH & CITATION VERIFICATION -----------------
 @app.post("/api/search")
-def search_judgments(req: SearchRequest, request: Request, _user: Dict[str, Any] = Depends(get_current_user_from_header)):
+def search_judgments(req: SearchRequest, request: Request, _user: Dict[str, Any] = Depends(require("SEARCH"))):
     request.state.user = _user
     log_audit("SEARCH_QUERY", f"Query: {req.query} | Court: {req.court} | Status: {req.precedent_status}", request=request)
-
-    # When searching across all courts without specific judge filter, use the unified precedent engine
-    if (not req.court or req.court == "ALL") and not req.judge and (not req.precedent_status or req.precedent_status in ["ALL", "FOLLOWED"]):
-        results = search_relevant_precedents(req.query, limit=req.limit)
-        for r in results:
-            r["district"] = resolve_case_district(r.get("court"), r.get("bench"), r.get("cnr_number"), r.get("headnote", ""))
-        enrich_search_rows(results)
-        return {
-            "query": req.query,
-            "count": len(results),
-            "results": results
-        }
-
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    clean_q = "".join([c if c.isalnum() or c.isspace() else " " for c in req.query]).strip()
-    words = [w for w in clean_q.split() if len(w) > 1]
-
-    stop_words = {'of', 'in', 'the', 'and', 'for', 'to', 'a', 'an', 'by', 'on', 'with', 'at', 'from', 'into', 'under'}
-    meaningful = [w for w in words if w.lower() not in stop_words and len(w) > 2]
-    if not meaningful:
-        meaningful = words[:3] if words else ["justice"]
-
-    # Intelligent Legal Query Expansion (maps colloquial terms to statutory IPC sections & concepts)
-    LEGAL_EXPANSIONS = {
-        "theft": "theft OR 379 OR 380 OR stolen",
-        "murder": "murder OR 302 OR 307 OR homicidal",
-        "half murder": "307 OR half murder OR attempt murder",
-        "cheating": "cheating OR 420 OR fraud",
-        "fraud": "fraud OR 420 OR cheating",
-        "bail": "bail OR 438 OR 439 OR anticipatory",
-        "dowry": "dowry OR 498A OR 304B",
-        "rape": "rape OR 376 OR sexual",
-        "corruption": "corruption OR bribe OR prevention corruption",
-        "kidnapping": "kidnapping OR 363 OR 364 OR abduction",
-        "extortion": "extortion OR 384 OR 385",
-        "accident": "accident OR 279 OR 304A OR motor",
-        "defamation": "defamation OR 499 OR 500",
-    }
-
-    q_lower = req.query.lower().strip()
-    if q_lower in LEGAL_EXPANSIONS:
-        fts_query = LEGAL_EXPANSIONS[q_lower]
-    else:
-        tokens = []
-        for term in meaningful[:6]:
-            t_low = term.lower()
-            if t_low in LEGAL_EXPANSIONS:
-                for exp_part in LEGAL_EXPANSIONS[t_low].split(" OR "):
-                    c_p = re.sub(r'[^a-zA-Z0-9]', '', exp_part).strip()
-                    if c_p and f'"{c_p}"' not in tokens:
-                        tokens.append(f'"{c_p}"')
-            else:
-                c_p = re.sub(r'[^a-zA-Z0-9]', '', term).strip()
-                if c_p and len(c_p) > 1 and f'"{c_p}"' not in tokens:
-                    tokens.append(f'"{c_p}"')
-        fts_query = " OR ".join(tokens) if tokens else '"justice"'
-
-    subquery_limit = max(req.limit * 5, 120)
-
-    base_sql = f"""
-    SELECT j.id, j.case_id, j.title, j.court, j.bench, j.judges, j.judgment_date,
-           j.year, j.citation, j.equivalent_citations, j.statutes_considered,
-           j.subject_category, j.headnote, j.ratio_decidendi, j.precedent_status,
-           j.overruled_by, j.citing_cases_count, j.cnr_number, j.docket_number, f.rank
-    FROM (
-        SELECT rowid, bm25(judgments_fts) as rank
-        FROM judgments_fts
-        WHERE judgments_fts MATCH ?
-        ORDER BY rank
-        LIMIT {subquery_limit}
-    ) f
-    JOIN judgments j ON f.rowid = j.id
-    WHERE 1=1
-    """
-    params = [fts_query]
-
-    if req.court and req.court != "ALL":
-        base_sql += " AND j.court LIKE ?"
-        params.append(f"%{req.court}%")
-
-    if req.judge:
-        base_sql += " AND j.judges LIKE ?"
-        params.append(f"%{req.judge}%")
-
-    if req.precedent_status and req.precedent_status != "ALL":
-        base_sql += " AND j.precedent_status = ?"
-        params.append(req.precedent_status)
-
-    base_sql += " ORDER BY f.rank LIMIT ?"
-    params.append(req.limit)
-
-    try:
-        cursor.execute(base_sql, params)
-        results = [dict(r) for r in cursor.fetchall()]
-        if not results:
-            # Fallback to broader match if specific terms yielded zero
-            fallback_q = " OR ".join(meaningful[:3])
-            cursor.execute(f"""
-            SELECT j.id, j.case_id, j.title, j.court, j.bench, j.judges, j.judgment_date,
-                   j.year, j.citation, j.equivalent_citations, j.statutes_considered,
-                   j.subject_category, j.headnote, j.ratio_decidendi, j.precedent_status,
-                   j.overruled_by, j.citing_cases_count, j.cnr_number, j.docket_number, f.rank
-            FROM (
-                SELECT rowid, bm25(judgments_fts) as rank
-                FROM judgments_fts
-                WHERE judgments_fts MATCH ?
-                ORDER BY rank
-                LIMIT {subquery_limit}
-            ) f
-            JOIN judgments j ON f.rowid = j.id
-            ORDER BY f.rank LIMIT ?
-            """, [fallback_q, req.limit])
-            results = [dict(r) for r in cursor.fetchall()]
-    except Exception as e:
-        print(f"FTS search error: {e}. Falling back to LIKE query.")
-        cursor.execute("SELECT * FROM judgments WHERE title LIKE ? OR full_text LIKE ? LIMIT ?", (f"%{clean_q}%", f"%{clean_q}%", req.limit))
-        results = [dict(r) for r in cursor.fetchall()]
-
-    conn.close()
-    enrich_search_rows(results)
-
-    # Annotate and sort by Upper Bench Priority (Article 141 Stare Decisis) & Resolve Jurisdictional District
-    try:
-        for r in results:
-            r["bench_priority_score"] = calculate_bench_priority(r)
-            r["bench_label"] = get_bench_label(r)
-            r["is_upper_bench"] = r["bench_priority_score"] >= 90
-            r["district"] = resolve_case_district(r.get("court"), r.get("bench"), r.get("cnr_number"), r.get("headnote", ""))
-
-        results.sort(
-            key=lambda x: (
-                1 if x.get("precedent_status") != "OVERRULED" else 0,
-                x["bench_priority_score"],
-                -float(x.get("rank", 0) if x.get("rank") is not None else 0)
-            ),
-            reverse=True
-        )
-        if results and results[0].get("precedent_status") != "OVERRULED":
-            results[0]["is_primary_binding"] = True
-    except Exception as e_bench:
-        print(f"Error sorting by bench priority or resolving district: {e_bench}")
-
-    return {
-        "query": req.query,
-        "count": len(results),
-        "results": results
-    }
+    return search_svc.run_search(req.model_dump(), _user, request=request)
 
 @app.get("/api/cases/recent")
-def get_recent_cases(limit: int = 6):
+def get_recent_cases(request: Request, limit: int = 6, _user: Dict[str, Any] = Depends(get_current_user_from_header)):
     """Returns most recently delivered / ingested authentic court cases for live stream."""
+    request.state.user = _user
+    limit = max(1, min(int(limit), 50))
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -555,7 +454,7 @@ def get_recent_cases(limit: int = 6):
     return {"count": len(rows), "recent_cases": rows}
 
 @app.get("/api/judgment/{judgment_id}")
-def get_judgment_details(judgment_id: int, request: Request, _user: Dict[str, Any] = Depends(get_current_user_from_header)):
+def get_judgment_details(judgment_id: int, request: Request, _user: Dict[str, Any] = Depends(require("SEARCH"))):
     request.state.user = _user
     conn = get_connection()
     cursor = conn.cursor()
@@ -573,8 +472,9 @@ def get_judgment_details(judgment_id: int, request: Request, _user: Dict[str, An
     return data
 
 @app.post("/api/verify_citations")
-def verify_citations_endpoint(payload: Dict[str, str]):
+def verify_citations_endpoint(payload: Dict[str, str], request: Request, _user: Dict[str, Any] = Depends(require_any("VERIFY_CITATION", "SEARCH"))):
     text = payload.get("text", "")
+    log_audit("VERIFY_CITATIONS", f"Bulk citation check ({len(text)} chars)", request=request)
     return {
         "verifications": verify_all_text_citations(text)
     }
@@ -667,69 +567,32 @@ async def process_brief_ocr(
         if not isinstance(result, dict) or not result.get("success"):
             raise ValueError("Invalid result format from OCR engine")
     except Exception as ocr_err:
-        print(f"OCR processing fallback triggered due to: {ocr_err}")
-        # Build 100% compliant fallback structure
-        fallback_text = f"""FIRST INFORMATION REPORT (Section 154 Cr.P.C. / Section 173 BNSS)
-POLICE STATION: Airport P.S., District North 24 Parganas, West Bengal
-YEAR: 2017 | FIR NO.: 04/17 | DATE: 13.01.2017
-
-ACTS & SECTIONS:
-1. Indian Penal Code, 1860 — Sections 399 (Preparation to commit dacoity), 402 (Assembling for dacoity)
-2. Arms Act, 1959 — Sections 25(1)(a) & 27
-
-GENERAL DIARY & OCCURRENCE:
-- G.D. Entry No. 628/16 dated 13.01.2017 at 02:35 hrs
-- Occurrence of Offence: Friday, 13.01.2017 between 01:05 hrs and 02:15 hrs
-- Place: Gopalpur Housing Complex Ground, Airport P.S. (Approx 4 KMs West)
-
-COMPLAINANT / INFORMANT:
-State of West Bengal (through Informant SI Sahabuddin Mondal, Airport P.S.)
-
-ACCUSED PERSONS:
-(1) Samir Das (24 yrs), S/o Lt. Santosh Das
-(2) Ranjan Samaddar (28 yrs), S/o Lt. Sukhlal Samaddar
-(3) Bappa Chowdhury (24 yrs), S/o Bhola Chowdhury
-(4) Subrot Motta (25 yrs), S/o Abdul Gafur Motta
-(5) 8 to 9 other associates (fled under cover of darkness)
-
-SEIZED ARTICLES:
-(i) One country-made firearm (approx 10" in length)
-(ii) .303 ammunition (live cartridge)
-(iii) One Bhojali (curved sharp weapon)
-(iv) One dagger, one knife, two iron rods
-
-SUBSTANCE OF COMPLAINT:
-On 13.01.2017 at about 01:05 hrs, credible source information was received that 12 to 15 anti-social persons had assembled with deadly weapons at Gopalpur Housing Complex Ground planning to commit dacoity. Police cordoned the area and apprehended 4 accused with weapons while others fled."""
-
+        print(f"OCR processing failed: {ocr_err}")
+        # Honest failure: nothing was read, so nothing is invented.
         result = {
-            "success": True,
-            "source": "fallback",
-            "is_image": True,
-            "image_meta": {"format": "JPEG", "file_size_bytes": len(file_bytes) or 379000},
-            "file_format": "JPEG",
+            "success": False,
+            "source": "failed",
+            "error": "The file could not be read. Check the file or paste the text instead.",
+            "is_image": False,
+            "file_format": os.path.splitext(safe_name)[1].lstrip(".").upper() or "UNKNOWN",
             "vlm_transcription_used": False,
-            "raw_character_count": len(fallback_text),
-            "cleaned_character_count": len(fallback_text),
-            "is_ocr_enhanced": True,
-            "dpdp_redactions_applied": 3,
-            "metadata": {
-                "court": "Court of Learned Additional Chief Judicial Magistrate (ACJM), Barrackpore",
-                "case_number": "FIR No. 04/17 • G.D. Entry No. 628/16 (Airport P.S.)",
-                "petitioner": "State of West Bengal (through Informant SI Sahabuddin Mondal)",
-                "respondent": "Samir Das, Ranjan Samaddar, Bappa Chowdhury, Subrot Motta & Ors.",
-                "case_title": "State of West Bengal v. Samir Das & Ors.",
-                "facts_summary": fallback_text,
-                "grounds_of_challenge": "(A) Whether the prosecution evidence and seizure memo establish active preparation and assembly of five or more persons for dacoity under Sections 399 & 402 IPC?\n(B) Whether conscious and unlicensed possession of lethal firearms is established under Sections 25(1)(a) & 27 Arms Act, 1959?",
-                "prayer_relief": "Prayer for cognizance of offences under Sections 399, 402 IPC and 25(1)(a), 27 Arms Act, framing of charges against accused, and expeditious trial.",
-                "statutory_provisions": "Sections 399, 402 of the Indian Penal Code, 1860; Sections 25(1)(a) & 27 of the Arms Act, 1959"
-            },
-            "sanitized_text_preview": fallback_text
+            "raw_character_count": 0,
+            "cleaned_character_count": 0,
+            "is_ocr_enhanced": False,
+            "dpdp_redactions_applied": 0,
+            "metadata": {k: "" for k in (
+                "court", "case_number", "petitioner", "respondent", "case_title", "facts_summary",
+                "grounds_of_challenge", "prayer_relief", "statutory_provisions")},
+            "sanitized_text_preview": "",
         }
 
     try:
         fmt = result.get('file_format', 'UNKNOWN')
         vlm_tag = " [Gemini VLM]" if result.get('vlm_transcription_used') else ""
-        log_audit("OCR_PROCESSED_BRIEF", f"File: {safe_name} [{fmt}]{vlm_tag} (OCR cleaned: {result.get('cleaned_character_count', 0)} chars, Redactions: {result.get('dpdp_redactions_applied', 0)})", request=request)
+        if not result.get("success"):
+            log_audit("OCR_FAILED", f"File: {safe_name} [{fmt}] could not be read", request=request)
+        else:
+            log_audit("OCR_PROCESSED_BRIEF", f"File: {safe_name} [{fmt}]{vlm_tag} (OCR cleaned: {result.get('cleaned_character_count', 0)} chars, Redactions: {result.get('dpdp_redactions_applied', 0)})", request=request)
     except Exception as audit_err:
         print(f"Audit log warning: {audit_err}")
 
@@ -739,8 +602,10 @@ On 13.01.2017 at about 01:05 hrs, credible source information was received that 
     return JSONResponse(status_code=200, content=result)
 
 @app.post("/api/ocr/anonymize")
-def live_anonymize(req: AnonymizeRequest):
-    return anonymize_pii(req.text)
+def live_anonymize(req: AnonymizeRequest, request: Request, _user: Dict[str, Any] = Depends(require("UPLOAD_PLEADING"))):
+    result = anonymize_pii(req.text)
+    log_audit("OCR_ANONYMIZE", f"Live anonymisation of {len(req.text or '')} chars", request=request)
+    return result
 
 @app.post("/api/upload_pleading")
 async def upload_pleading(request: Request, file: UploadFile = File(...), _user: Dict[str, Any] = Depends(require("UPLOAD_PLEADING"))):
@@ -760,22 +625,7 @@ async def upload_pleading(request: Request, file: UploadFile = File(...), _user:
 @app.post("/api/draft/generate")
 def draft_judgment_endpoint(req: DraftRequest, request: Request, _user: Dict[str, Any] = Depends(require("DRAFT_FULL"))):
     log_audit("GENERATE_DRAFT_JUDGMENT", f"Case: {req.case_title} ({req.case_number}) - {req.court}", request=request)
-    result = generate_15_section_judgment(
-        case_title=req.case_title,
-        case_number=req.case_number,
-        court=req.court,
-        facts=req.facts,
-        petitioner_arguments=req.petitioner_arguments,
-        respondent_arguments=req.respondent_arguments,
-        issues=req.issues,
-        statutory_provisions=req.statutory_provisions,
-        api_key=req.gemini_api_key
-    )
-    result["case_title"] = req.case_title
-    result["case_number"] = req.case_number
-    result["court"] = req.court
-    result["generation_mode"] = result.get("engine", "Gyanam Neural Judicial Synthesis Engine")
-    return result
+    return drafts_svc.generate_draft(req.model_dump())
 
 # ----------------- DRAFT STATE MACHINE (B7) -----------------
 CANONICAL_STATUSES = ("DRAFT", "IN_REVIEW", "BENCH_APPROVED", "FINAL_SEALED", "RETURNED")
@@ -807,68 +657,15 @@ def _record_draft_version(conn, draft_id: int, version: int, saved_by: Optional[
 
 @app.post("/api/save_draft")
 def save_draft_endpoint(req: SaveDraftRequest, request: Request, _user: Dict[str, Any] = Depends(require("DRAFT_FULL"))):
-    conn = get_connection()
-    cursor = conn.cursor()
-    parts = re.split(r'\s+(?:v\.|vs\.?|versus)\s+', req.case_title.strip(), maxsplit=1, flags=re.IGNORECASE)
-    pet_name = parts[0].strip() if len(parts) == 2 and parts[0].strip() else (req.case_title.strip() or "Petitioner")
-    resp_name = parts[1].strip() if len(parts) == 2 and parts[1].strip() else "State / Respondent"
-    mkey = matter_key_for(req.case_number)
-    reviewer = _user.get("full_name") or req.reviewed_by
-
-    if req.draft_id:
-        cursor.execute("SELECT status, COALESCE(version, 1) AS version FROM draft_judgments WHERE id = ?", (req.draft_id,))
-        existing = cursor.fetchone()
-        if existing:
-            cur_status = normalise_status(existing["status"])
-            cur_version = existing["version"]
-            if req.version is not None and req.version != cur_version:
-                conn.close()
-                return JSONResponse(status_code=409, content={
-                    "detail": "Draft was modified elsewhere.", "code": "VERSION_CONFLICT",
-                    "current_version": cur_version})
-            if cur_status == "FINAL_SEALED":
-                conn.close()
-                return JSONResponse(status_code=409, content={
-                    "detail": "Sealed drafts are immutable.", "code": "DRAFT_SEALED", "current_version": cur_version})
-            # Content saves keep the current status; status changes go through update_status.
-            new_version = cur_version + 1
-            cursor.execute("""
-            UPDATE draft_judgments
-            SET case_title = ?, case_number = ?, court = ?, petitioner = ?, respondent = ?,
-                facts = ?, issues = ?, petitioner_arguments = ?, respondent_arguments = ?,
-                statutory_provisions = ?, draft_content_json = ?, reviewed_by = ?,
-                matter_key = ?, version = ?
-            WHERE id = ?;
-            """, (
-                req.case_title, req.case_number, req.court, pet_name, resp_name,
-                req.facts, req.issues, req.petitioner_arguments, req.respondent_arguments,
-                req.statutory_provisions, json.dumps(req.draft_content_json),
-                reviewer, mkey, new_version, req.draft_id
-            ))
-            _record_draft_version(conn, req.draft_id, new_version, reviewer, cur_status, json.dumps(req.draft_content_json))
-            conn.commit()
-            conn.close()
-            log_audit("UPDATE_DRAFT", f"Draft ID {req.draft_id}: {req.case_title} (v{new_version})", request=request)
-            return {"success": True, "draft_id": req.draft_id, "version": new_version, "status": cur_status}
-
-    cursor.execute("""
-    INSERT INTO draft_judgments (
-        case_title, case_number, court, date_created, petitioner, respondent,
-        facts, issues, petitioner_arguments, respondent_arguments, statutory_provisions,
-        draft_content_json, status, reviewed_by, matter_key, version
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1);
-    """, (
-        req.case_title, req.case_number, req.court, datetime.now().strftime("%Y-%m-%d %H:%M"),
-        pet_name, resp_name, req.facts, req.issues, req.petitioner_arguments,
-        req.respondent_arguments, req.statutory_provisions, json.dumps(req.draft_content_json),
-        "DRAFT", reviewer, mkey
-    ))
-    draft_id = cursor.lastrowid
-    _record_draft_version(conn, draft_id, 1, reviewer, "DRAFT", json.dumps(req.draft_content_json))
-    conn.commit()
-    conn.close()
-    log_audit("SAVE_DRAFT", f"Draft ID {draft_id}: {req.case_title}", request=request)
-    return {"success": True, "draft_id": draft_id, "version": 1, "status": "DRAFT"}
+    try:
+        out = drafts_svc.save_draft(req.model_dump(), _user)
+    except drafts_svc.DraftError as e:
+        return JSONResponse(status_code=e.status, content=e.content)
+    if req.draft_id and out["draft_id"] == req.draft_id:
+        log_audit("UPDATE_DRAFT", f"Draft ID {out['draft_id']}: {req.case_title} (v{out['version']})", request=request)
+    else:
+        log_audit("SAVE_DRAFT", f"Draft ID {out['draft_id']}: {req.case_title}", request=request)
+    return out
 
 @app.get("/api/drafts")
 def list_drafts(_user: Dict[str, Any] = Depends(require("DRAFT_FULL"))):
@@ -884,37 +681,17 @@ def list_drafts(_user: Dict[str, Any] = Depends(require("DRAFT_FULL"))):
 
 @app.get("/api/draft/{draft_id}")
 def get_draft_by_id(draft_id: int, _user: Dict[str, Any] = Depends(require("DRAFT_FULL"))):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM draft_judgments WHERE id = ?", (draft_id,))
-    row = cursor.fetchone()
-    conn.close()
-    if not row:
-        raise HTTPException(status_code=404, detail="Draft judgment not found")
-    data = dict(row)
-    data["status"] = normalise_status(data.get("status"))
-    if isinstance(data.get("draft_content_json"), str):
-        try:
-            data["draft_content_json"] = json.loads(data["draft_content_json"])
-        except Exception:
-            pass
-    return data
+    try:
+        return drafts_svc.get_draft(draft_id)
+    except drafts_svc.DraftError as e:
+        raise HTTPException(status_code=e.status, detail=e.content["detail"])
 
 @app.get("/api/drafts/{draft_id}/versions")
 def get_draft_versions(draft_id: int, _user: Dict[str, Any] = Depends(require("DRAFT_FULL"))):
-    conn = get_connection()
     try:
-        if not conn.execute("SELECT 1 FROM draft_judgments WHERE id = ?", (draft_id,)).fetchone():
-            raise HTTPException(status_code=404, detail="Draft judgment not found")
-        try:
-            rows = conn.execute(
-                "SELECT version, saved_at, saved_by, status FROM draft_versions WHERE draft_id = ? ORDER BY version DESC, id DESC",
-                (draft_id,)).fetchall()
-        except sqlite3.OperationalError:
-            rows = []
-    finally:
-        conn.close()
-    return [dict(r) for r in rows]
+        return drafts_svc.list_versions(draft_id)
+    except drafts_svc.DraftError as e:
+        raise HTTPException(status_code=e.status, detail=e.content["detail"])
 
 # ----------------- JUDICIAL EXPORT & PUBLISHING -----------------
 @app.get("/api/draft/export/docx/{draft_id}")
@@ -944,49 +721,41 @@ class UpdateDraftStatusRequest(BaseModel):
     status: Optional[str] = None
     new_status: Optional[str] = None
     reviewer_name: Optional[str] = "Hon'ble Judicial User"
+    # v3
+    reason: Optional[str] = None
+    version: Optional[int] = None
 
 @app.post("/api/draft/update_status")
 def update_draft_status_endpoint(req: UpdateDraftStatusRequest, request: Request, _user: Dict[str, Any] = Depends(require("DRAFT_FULL"))):
-    target = normalise_status(req.status or req.new_status or "IN_REVIEW")
-    if target not in CANONICAL_STATUSES:
-        raise HTTPException(status_code=400, detail=f"Unknown status '{target}'. Allowed: {', '.join(CANONICAL_STATUSES)}")
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT status, COALESCE(version, 1) AS version FROM draft_judgments WHERE id = ?", (req.draft_id,))
-    row = cursor.fetchone()
-    if not row:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Draft judgment not found")
-    current = normalise_status(row["status"])
-    if target != current and target not in ALLOWED_TRANSITIONS.get(current, set()):
-        conn.close()
-        return JSONResponse(status_code=409, content={
-            "detail": f"Illegal transition {current} -> {target}.", "code": "ILLEGAL_TRANSITION",
-            "current_status": current, "allowed": sorted(ALLOWED_TRANSITIONS.get(current, set()))})
-    if target in ("BENCH_APPROVED", "FINAL_SEALED") and target != current:
-        if not getattr(request.state, "legacy_fallback", False) and not check_permission(_user, "FINALIZE_JUDGMENT"):
-            conn.close()
-            return JSONResponse(status_code=403, content={
-                "detail": "FINALIZE_JUDGMENT permission required to approve or seal.", "code": "FORBIDDEN_PERMISSION"})
-    reviewer = _user.get("full_name") or req.reviewer_name
-    cursor.execute("UPDATE draft_judgments SET status = ?, reviewed_by = ?, version = ? WHERE id = ?;",
-                   (target, reviewer, row["version"] + 1, req.draft_id))
-    _record_draft_version(conn, req.draft_id, row["version"] + 1, reviewer, target)
-    conn.commit()
-    conn.close()
-    log_audit("DRAFT_STATUS_UPDATED", f"Draft #{req.draft_id}: {current} -> {target} by {reviewer}", request=request)
-    return {"success": True, "draft_id": req.draft_id, "status": target, "new_status": target,
-            "previous_status": current, "version": row["version"] + 1}
+    can_finalize = getattr(request.state, "legacy_fallback", False) or check_permission(_user, "FINALIZE_JUDGMENT")
+    try:
+        out = drafts_svc.update_status_with_reason(
+            req.draft_id, req.status or req.new_status, req.reason, req.version, _user,
+            can_finalize=bool(can_finalize), reviewer_fallback=req.reviewer_name)
+    except drafts_svc.DraftError as e:
+        return JSONResponse(status_code=e.status, content=e.content)
+    extra = f" Reason: {out['reason']}" if out.get("reason") else ""
+    log_audit("DRAFT_STATUS_UPDATED", f"Draft #{req.draft_id}: {out['previous_status']} -> {out['status']} by {out['reviewer']}.{extra}", request=request)
+    out.pop("reviewer", None)
+    return out
 
-# In-memory user active statuses override
-USER_STATUS_OVERRIDES = {}
+def _user_states() -> Dict[str, Dict[str, Any]]:
+    conn = get_connection()
+    try:
+        return {r["user_id"]: dict(r) for r in conn.execute("SELECT user_id, active, changed_by, changed_at FROM user_status")}
+    except sqlite3.Error:
+        return {}
+    finally:
+        conn.close()
 
 @app.get("/api/admin/users")
 def get_admin_users_endpoint(_user: Dict[str, Any] = Depends(require("MANAGE_USERS"))):
+    states = _user_states()
     users_list = []
     for email, u in INSTITUTIONAL_DIRECTORY.items():
         role_perm = ROLES_PERMISSIONS.get(u.get("role", "JUDICIAL_USER"), {})
-        status_val = USER_STATUS_OVERRIDES.get(email, "ACTIVE")
+        st = states.get(u.get("user_id"))
+        status_val = "SUSPENDED" if st and not st["active"] else "ACTIVE"
         users_list.append({
             "user_id": u.get("user_id"),
             "username": email,
@@ -998,8 +767,9 @@ def get_admin_users_endpoint(_user: Dict[str, Any] = Depends(require("MANAGE_USE
             "scope_role": u.get("scope_role"),
             "badge_id": u.get("badge_id"),
             "status": status_val,
+            "status_changed_at": st["changed_at"] if st else None,
+            "status_changed_by": st["changed_by"] if st else None,
             "permissions": role_perm.get("permissions", []),
-            "last_active": "Today, Live"
         })
     return {"users": users_list}
 
@@ -1011,69 +781,28 @@ def toggle_user_status_endpoint(payload: Dict[str, Any], request: Request, _user
         if email_key.lower() == identifier or str(u_info.get("user_id", "")).lower() == identifier or str(u_info.get("badge_id", "")).lower() == identifier:
             matched_email = email_key
             break
-    if matched_email:
-        current = USER_STATUS_OVERRIDES.get(matched_email, "ACTIVE")
-        new_status = "SUSPENDED" if current == "ACTIVE" else "ACTIVE"
-        USER_STATUS_OVERRIDES[matched_email] = new_status
-        log_audit("ADMIN_TOGGLE_USER", f"User {matched_email} status changed to {new_status}", request=request)
-        return {"success": True, "email": matched_email, "new_status": new_status, "status": new_status}
-    raise HTTPException(status_code=404, detail="User not found")
-
-@app.get("/api/export/audit_csv")
-def export_audit_csv_endpoint(_user: Dict[str, Any] = Depends(require_any("VIEW_AUDIT", "EXPORT_AUDIT_LOGS"))):
+    if not matched_email:
+        raise HTTPException(status_code=404, detail="User not found")
+    uid = INSTITUTIONAL_DIRECTORY[matched_email]["user_id"]
+    if uid == (_user.get("user_id") or _user.get("sub")):
+        raise AuthError(409, "You cannot suspend your own account.", "CANNOT_SUSPEND_SELF")
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, timestamp, user_name, user_role, action, details, ip_address FROM audit_logs ORDER BY id DESC LIMIT 500")
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        row = conn.execute("SELECT active FROM user_status WHERE user_id = ?", (uid,)).fetchone()
+        was_active = True if row is None else bool(row[0])
+        new_active = 0 if was_active else 1
+        conn.execute(
+            "INSERT INTO user_status (user_id, active, changed_by, changed_at) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET active = excluded.active, changed_by = excluded.changed_by, changed_at = excluded.changed_at",
+            (uid, new_active, _user.get("email") or _user.get("full_name"), datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        conn.commit()
+    finally:
+        conn.close()
+    new_status = "ACTIVE" if new_active else "SUSPENDED"
+    log_audit("ADMIN_TOGGLE_USER", f"User {matched_email} ({uid}) status changed to {new_status}", request=request)
+    return {"success": True, "email": matched_email, "new_status": new_status, "status": new_status}
 
-    output = io.StringIO()
-    output.write("Log_ID,Timestamp,User_Name,User_Role,Action,Details,IP_Address\n")
-    for r in rows:
-        details_escaped = str(r[5]).replace('"', '""')
-        output.write(f'"{r[0]}","{r[1]}","{r[2]}","{r[3]}","{r[4]}","{details_escaped}","{r[6]}"\n')
-
-    output.seek(0)
-    return StreamingResponse(
-        io.BytesIO(output.getvalue().encode('utf-8')),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=gyanam_institutional_audit_log.csv"}
-    )
-
-# ----------------- REAL-TIME COURT SYNC DAEMON -----------------
-@app.get("/api/sync/status")
-def sync_status_endpoint():
-    return get_sync_status()
-
-@app.post("/api/sync/trigger")
-def sync_trigger_endpoint(request: Request, batch_size: Optional[int] = 12, _user: Dict[str, Any] = Depends(require("MANAGE_CORPUS"))):
-    log_audit("SYNC_TRIGGERED", f"Initiated SCitation real-time sync (batch: {batch_size})", request=request)
-    result = run_incremental_sync(batch_size=batch_size)
-    return result
-
-@app.get("/api/sync/history")
-def sync_history_endpoint():
-    return get_sync_history()
-
-# ----------------- DPDP ACT & CRYPTOGRAPHIC LEDGER -----------------
-@app.get("/api/audit/ledger/verify")
-def verify_audit_ledger_endpoint(_user: Dict[str, Any] = Depends(require_any("VIEW_AUDIT", "VERIFY_LEDGER"))):
-    return verify_ledger_integrity()
-
-@app.get("/api/audit/ledger/blocks")
-def get_ledger_blocks_endpoint(limit: Optional[int] = 20, _user: Dict[str, Any] = Depends(require_any("VIEW_AUDIT", "VERIFY_LEDGER"))):
-    return get_ledger_blocks(limit=limit)
-
-@app.get("/api/audit_logs")
-def get_audit_logs(
-    action: Optional[str] = Query(None, description="Exact action name, case-insensitive"),
-    user: Optional[str] = Query(None, description="Substring of user name"),
-    q: Optional[str] = Query(None, description="Substring of details"),
-    since: Optional[str] = Query(None, description="YYYY-MM-DD, inclusive"),
-    limit: Optional[int] = Query(None, ge=1, description="Max rows (default 50 unfiltered / 200 filtered, max 1000)"),
-    _user: Dict[str, Any] = Depends(require_any("VIEW_AUDIT", "EXPORT_AUDIT_LOGS")),
-):
-    """Audit rows, newest first. Response is a plain list (unchanged shape)."""
+def _audit_filter(action, user, q, since, until, role):
     where, params = [], []
     if action:
         where.append("UPPER(action) = ?")
@@ -1084,25 +813,121 @@ def get_audit_logs(
     if q:
         where.append("LOWER(COALESCE(details, '')) LIKE ?")
         params.append(f"%{q.strip().lower()}%")
-    if since:
-        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", since.strip()):
-            raise HTTPException(status_code=422, detail="since must be YYYY-MM-DD")
-        where.append("timestamp >= ?")
-        params.append(since.strip())
-    # Legacy callers with no filters keep the old 50-row page.
+    if role:
+        where.append("UPPER(user_role) = ?")
+        params.append(role.strip().upper())
+    for label, val, op in (("since", since, ">="), ("until", until, "<=")):
+        if val:
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", val.strip()):
+                raise HTTPException(status_code=422, detail=f"{label} must be YYYY-MM-DD")
+            where.append(f"substr(timestamp, 1, 10) {op} ?")
+            params.append(val.strip())
+    return where, params
+
+def _csv_cell(v) -> str:
+    """Neutralise spreadsheet formula injection: cells starting with = + - @ (or tab/CR) get a leading quote."""
+    t = "" if v is None else str(v)
+    if t and t[0] in ("=", "+", "-", "@", "\t", "\r"):
+        t = "'" + t
+    return t
+
+@app.get("/api/export/audit_csv")
+def export_audit_csv_endpoint(
+    action: Optional[str] = Query(None), user: Optional[str] = Query(None), q: Optional[str] = Query(None),
+    since: Optional[str] = Query(None), until: Optional[str] = Query(None), role: Optional[str] = Query(None),
+    bom: Optional[int] = Query(0),
+    _user: Dict[str, Any] = Depends(require_any("VIEW_AUDIT", "EXPORT_AUDIT_LOGS")),
+):
+    """Streams every matching audit row (no row cap), newest first, in keyset pages."""
+    where, params = _audit_filter(action, user, q, since, until, role)
+
+    def rows_iter():
+        buf = io.StringIO()
+        w = csv.writer(buf, quoting=csv.QUOTE_ALL, lineterminator="\n")
+        if bom:
+            buf.write("\ufeff")
+        w.writerow(["Log_ID", "Timestamp", "User_Name", "User_Role", "Action", "Details", "IP_Address"])
+        yield buf.getvalue(); buf.seek(0); buf.truncate()
+        last_id = None
+        while True:
+            cond = list(where); prm = list(params)
+            if last_id is not None:
+                cond.append("id < ?"); prm.append(last_id)
+            sql = "SELECT id, timestamp, user_name, user_role, action, details, ip_address FROM audit_logs"
+            if cond:
+                sql += " WHERE " + " AND ".join(cond)
+            sql += " ORDER BY id DESC LIMIT 1000"
+            conn = get_connection()
+            try:
+                page = conn.execute(sql, prm).fetchall()
+            finally:
+                conn.close()
+            if not page:
+                break
+            for r in page:
+                w.writerow([r[0]] + [_csv_cell(c) for c in r[1:]])
+            yield buf.getvalue(); buf.seek(0); buf.truncate()
+            last_id = page[-1][0]
+            if len(page) < 1000:
+                break
+
+    return StreamingResponse(
+        rows_iter(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=gyanam_institutional_audit_log.csv"}
+    )
+
+# ----------------- REAL-TIME COURT SYNC DAEMON -----------------
+@app.get("/api/sync/status")
+def sync_status_endpoint(_user: Dict[str, Any] = Depends(require_any("MANAGE_CORPUS", "VIEW_AUDIT"))):
+    return get_sync_status()
+
+@app.post("/api/sync/trigger")
+def sync_trigger_endpoint(request: Request, batch_size: Optional[int] = 12, _user: Dict[str, Any] = Depends(require("MANAGE_CORPUS"))):
+    batch_size = max(1, min(int(batch_size or 12), 500))
+    log_audit("SYNC_TRIGGERED", f"Initiated sync batch (mode: simulated, batch: {batch_size})", request=request)
+    result = run_incremental_sync(batch_size=batch_size)
+    return result
+
+@app.get("/api/sync/history")
+def sync_history_endpoint(_user: Dict[str, Any] = Depends(require_any("MANAGE_CORPUS", "VIEW_AUDIT"))):
+    return get_sync_history()
+
+# ----------------- DPDP ACT & CRYPTOGRAPHIC LEDGER -----------------
+@app.get("/api/audit/ledger/verify")
+def verify_audit_ledger_endpoint(_user: Dict[str, Any] = Depends(require_any("VIEW_AUDIT", "VERIFY_LEDGER"))):
+    return verify_ledger_integrity()
+
+@app.get("/api/audit/ledger/blocks")
+def get_ledger_blocks_endpoint(limit: Optional[int] = 20, _user: Dict[str, Any] = Depends(require_any("VIEW_AUDIT", "VERIFY_LEDGER"))):
+    return get_ledger_blocks(limit=max(1, min(int(limit or 20), 500)))
+
+@app.get("/api/audit_logs")
+def get_audit_logs(
+    action: Optional[str] = Query(None, description="Exact action name, case-insensitive"),
+    user: Optional[str] = Query(None, description="Substring of user name"),
+    q: Optional[str] = Query(None, description="Substring of details"),
+    since: Optional[str] = Query(None, description="YYYY-MM-DD, inclusive"),
+    until: Optional[str] = Query(None, description="YYYY-MM-DD, inclusive"),
+    role: Optional[str] = Query(None, description="Exact user role, case-insensitive"),
+    offset: int = Query(0, ge=0),
+    limit: Optional[int] = Query(None, ge=1, description="Max rows (default 50 unfiltered / 200 filtered, max 1000)"),
+    _user: Dict[str, Any] = Depends(require_any("VIEW_AUDIT", "EXPORT_AUDIT_LOGS")),
+):
+    """Audit rows, newest first: {logs, total, offset}. total counts all matches before paging."""
+    where, params = _audit_filter(action, user, q, since, until, role)
+    # Callers with no filters keep the old 50-row page.
     default_limit = 200 if where else 50
     eff_limit = max(1, min(limit if limit is not None else default_limit, 1000))
-    sql = "SELECT * FROM audit_logs"
-    if where:
-        sql += " WHERE " + " AND ".join(where)
-    sql += " ORDER BY id DESC LIMIT ?"
-    params.append(eff_limit)
+    wsql = (" WHERE " + " AND ".join(where)) if where else ""
     conn = get_connection()
     try:
-        rows = conn.execute(sql, params).fetchall()
+        total = conn.execute("SELECT COUNT(*) FROM audit_logs" + wsql, params).fetchone()[0]
+        rows = conn.execute("SELECT * FROM audit_logs" + wsql + " ORDER BY id DESC LIMIT ? OFFSET ?",
+                            params + [eff_limit, offset]).fetchall()
     finally:
         conn.close()
-    return [dict(r) for r in rows]
+    return {"logs": [dict(r) for r in rows], "total": total, "offset": offset}
 
 # ----------------- DOCUMENTATION SERVING -----------------
 def _doc_basenames():
@@ -1149,6 +974,14 @@ try:
     app.include_router(ui_router)
 except ImportError as _imp_err:
     print(f"ui_routes not loaded: {_imp_err}")
+
+# Feature routers (docs/API_V3_CONTRACT.md). Each module owns its routes and permission dependencies.
+for _mod_name in ("document_routes", "search_routes", "draft_routes", "corpus_routes"):
+    try:
+        _mod = __import__(_mod_name)
+        app.include_router(_mod.router)
+    except ImportError as _imp_err:
+        print(f"{_mod_name} not loaded: {_imp_err}")
 
 GYANAM_UI = os.environ.get("GYANAM_UI", "new").strip().lower()
 APP_DIR = os.path.join(FRONTEND_DIR, "app")

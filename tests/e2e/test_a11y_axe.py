@@ -15,7 +15,12 @@ pytestmark = pytest.mark.a11y
 
 PAGES = [("home", "/"), ("research", "/research"), ("studio", "/drafts/1"), ("drafts", "/drafts"),
          ("intake", "/matters/new"), ("audit", "/audit"), ("settings", "/settings"), ("library", "/library"),
-         ("alerts", "/alerts"), ("matters", "/matters"), ("citation-check", "/judgments/check")]
+         ("alerts", "/alerts"), ("matters", "/matters"), ("citation-check", "/judgments/check"),
+         # v3 Documents (docs/API_V3_CONTRACT.md): the list page only, same reasoning as helpers.routes() --
+         # the detail page /documents/:id needs a real uuid4 id that build_fixture.py does not seed. See
+         # tests/e2e/test_documents_journey.py for detail-page coverage and docs/wiring/qa1.md for the patch
+         # to add a fixture document + a "document" entry here, if wanted later.
+         ("documents", "/documents")]
 MODES = {"1280": (1280, 800, None), "375": (375, 812, None), "xlarge": (1280, 800, "xlarge")}
 
 
@@ -253,7 +258,7 @@ def test_axe_collect_all_role_preview(browser, base_url, width):
 
 # The Admin role cannot open the drafter-only routes (they render the Forbidden page for Admin), so the
 # Admin sweep above says little about studio/drafts/intake/alerts/matters. Re-scan them as Clerk.
-DRAFTER_PAGES = [p for p in PAGES if p[0] in ("studio", "drafts", "intake", "alerts", "matters")]
+DRAFTER_PAGES = [p for p in PAGES if p[0] in ("studio", "drafts", "intake", "alerts", "matters", "documents")]
 
 
 @_all_only

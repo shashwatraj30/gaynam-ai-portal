@@ -103,3 +103,57 @@ export function toggleBrief(list, item, max = BRIEF_MAX) {
   return { list: [...cur, item], action: 'added' };
 }
 export const inBrief = (list, id) => Array.isArray(list) && list.some((c) => c.id === id);
+
+// ---- reader additions (v3) ----
+/** "A v. B" / "A vs B" / "A versus B" -> {petitioner, respondent}; null when the title has no such split. */
+export function splitParties(title) {
+  const m = String(title || '').split(/\s+(?:v\.|vs\.?|versus|v)\s+/i);
+  if (m.length < 2) return null;
+  const petitioner = m[0].trim(); const respondent = m.slice(1).join(' v. ').trim();
+  return petitioner && respondent ? { petitioner, respondent } : null;
+}
+
+/** ?para=12 -> 12; anything else -> null. */
+export function parseParaParam(value) {
+  const n = Number(String(value ?? '').trim());
+  return Number.isInteger(n) && n > 0 && n < 100000 ? n : null;
+}
+export const paraId = (n) => `para-${n}`;
+/** ?tab=ratio -> 'ratio' when allowed, else the fallback. */
+export function pickTab(value, allowed, fallback) {
+  return allowed.includes(value) ? value : fallback;
+}
+
+/** Paragraph rows from api.judgmentParagraphs: {available, items:[{n,text,page}]}. */
+export function paragraphRows(resp) {
+  const items = Array.isArray(resp?.items) ? resp.items : [];
+  const rows = items.map((p) => ({ n: Number(p.para_no), text: String(p.text || ''), page: p.page ?? null })).filter((p) => p.n > 0 && p.text);
+  return { available: resp?.available !== false && rows.length > 0, items: rows };
+}
+
+/** Who cites this judgment. Treatments (when available) win; else incoming 'cites' edges of the graph. */
+export function citedByRows(treatments, graph) {
+  if (treatments && treatments.available && Array.isArray(treatments.cited_by) && treatments.cited_by.length) {
+    return treatments.cited_by.map((r) => ({ id: r.citing_id ?? null, title: r.title || '', citation: r.citation || '', treatment: r.treatment || '', para: r.para_no ?? null, status: '' }));
+  }
+  const nodes = new Map((graph?.nodes || []).map((n) => [String(n.id), n]));
+  const center = (graph?.nodes || []).find((n) => n.is_center);
+  if (!center) return [];
+  return (graph.edges || []).filter((e) => e.relation === 'cites' && String(e.target) === String(center.id))
+    .map((e) => nodes.get(String(e.source))).filter(Boolean)
+    .map((n) => ({ id: n.judgment_id ?? null, title: n.title || '', citation: n.citation || '', treatment: '', para: null, status: n.precedent_status || '' }));
+}
+
+const normCite = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+/** Cited-case strings -> [{text, id}] with id set when a graph node in the corpus matches by citation or title. */
+export function linkCitedCases(texts, graph) {
+  const nodes = (graph?.nodes || []).filter((n) => n.in_corpus && n.judgment_id != null && !n.is_center);
+  return (texts || []).map((text) => {
+    const nt = normCite(text);
+    const hit = nodes.find((n) => (n.citation && nt.includes(normCite(n.citation))) || (n.title && n.title.length > 8 && nt.includes(normCite(n.title))));
+    return { text, id: hit ? hit.judgment_id : null };
+  });
+}
+
+/** Text for the "copy paragraph with citation" style actions. */
+export function copyBlock(label, text) { return `${label}\n${String(text || '').trim()}`; }

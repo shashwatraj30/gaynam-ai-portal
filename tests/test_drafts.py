@@ -5,8 +5,13 @@ def _save(client, h, payload, **extra):
     return client.post("/api/save_draft", json={**payload, **extra}, headers=h)
 
 
-def _status(client, h, did, status):
-    return client.post("/api/draft/update_status", json={"draft_id": did, "status": status}, headers=h)
+def _status(client, h, did, status, reason=None):
+    body = {"draft_id": did, "status": status}
+    if reason is not None:
+        body["reason"] = reason
+    elif status == "RETURNED":
+        body["reason"] = "Needs further findings on limitation (test)."
+    return client.post("/api/draft/update_status", json=body, headers=h)
 
 
 def test_create_returns_version_1(client, hdr, draft_payload):
@@ -87,7 +92,7 @@ def test_draft_versions_history(client, hdr, draft_payload):
     assert r.status_code == 200
     rows = r.json()
     assert [x["version"] for x in rows] == [3, 2, 1]
-    assert set(rows[0]) == {"version", "saved_at", "saved_by", "status"}
+    assert set(rows[0]) == {"version", "saved_at", "saved_by", "status", "note"}
     assert rows[0]["status"] == "IN_REVIEW" and rows[-1]["status"] == "DRAFT"
     assert client.get("/api/drafts/999999/versions", headers=hdr["Clerk"]).status_code == 404
     assert client.get(f"/api/drafts/{did}/versions").status_code == 401

@@ -14,11 +14,12 @@ import { emptyState } from '../ui/empty-state.js';
 import { errorState } from '../ui/error-state.js';
 import { skeleton } from '../ui/skeleton.js';
 import { banner } from '../ui/banner.js';
+import { field, input } from '../ui/form.js';
 import { precedentChip } from '../ui/status.js';
 import en from '../i18n/pages/graph.en.js';
 import hi from '../i18n/pages/graph.hi.js';
-import { layoutGraph, linkRows, neighborByKey, wrapLines, truncate, nodeHref, graphHref, isEmptyGraph } from './lib/graph-logic.js';
-import { LINEAGES, OVERRULED_PAIRS, lineageGraphLink, lineageReaderLink } from './lib/lineages.js';
+import { layoutGraph, linkRows, neighborByKey, wrapLines, truncate, nodeHref, graphHref, isEmptyGraph, resolveStreams, nodeActions, searchHits, treatmentCounts, TREATMENT_KEYS } from './lib/graph-logic.js';
+import { LINEAGES, OVERRULED_PAIRS } from './lib/lineages.js';
 
 addMessages('en', en); addMessages('hi', hi);
 
@@ -36,39 +37,103 @@ function head(title, lede, actions) {
     actions ? h('div', { class: 'g-page__actions' }, actions) : null);
 }
 
+const KEYS = ['privacy', 'cheque', 'natural', 'arbitration'];
+const localLabel = (key) => (KEYS.includes(key) ? { title: t(`graph.lineage.${key}`), subtitle: t(`graph.lineage.${key}.sub`) } : {});
+
+function lineageNode(n) {
+  const acts = nodeActions(n).map((a) => button({
+    label: a.kind === 'search' ? t('graph.searchCase') : a.kind === 'graph' ? t('graph.openGraph') : t('graph.openJudgment'),
+    variant: a.kind === 'open' ? 'primary' : 'ghost', href: a.href, ariaLabel: `${a.kind === 'search' ? t('graph.searchCase') : a.kind === 'graph' ? t('graph.openGraph') : t('graph.openJudgment')}: ${n.title}`,
+  }));
+  const rows = [['bench', n.bench], ['coram', n.coram], ['holding', n.holding], ['impact', n.impact]].filter(([, v]) => v);
+  return h('li', { class: `g-graph__lnode g-graph__node-li${n.overruled ? ' g-graph__node-li--bad' : ''}` },
+    n.year ? h('span', { class: 'g-graph__year' }, n.year) : null,
+    h('span', { class: 'g-graph__lmain' },
+      h('span', { class: 'g-graph__ltitle' }, n.title),
+      n.citation ? h('span', { class: 'g-meta' }, n.citation) : null),
+    h('span', { class: 'g-graph__lacts' },
+      n.overruled ? chip({ label: t('graph.status.overruled'), tone: 'danger' }) : null,
+      n.judgmentId == null ? chip({ label: t('graph.notInCorpus'), tone: 'neutral' }) : null,
+      ...acts),
+    rows.length ? h('dl', { class: 'g-graph__ndl' }, ...rows.flatMap(([k, v]) => [h('dt', {}, t(`graph.node.${k}`)), h('dd', {}, v)])) : null);
+}
+
+function finder() {
+  const live = h('div', { class: 'g-meta', 'aria-live': 'polite' });
+  const hits = h('div', { class: 'g-graph__hits' });
+  const inp = input({ type: 'search', placeholder: t('graph.find.label'), autocomplete: 'off' });
+  let seq = 0;
+  const run = async () => {
+    const q = inp.value.trim();
+    if (q.length < 3) { live.textContent = t('graph.find.hint'); hits.replaceChildren(); return; }
+    const my = ++seq; live.textContent = '';
+    hits.replaceChildren(skeleton({ lines: 3 }));
+    try {
+      const list = searchHits(await api.search({ query: q, limit: 8 }));
+      if (my !== seq) return;
+      live.textContent = list.length ? t('graph.find.count', { n: list.length }) : t('graph.find.none');
+      hits.replaceChildren(...list.map((r) => listRow({ title: r.title, meta: r.meta, href: graphHref(r.id) })));
+    } catch (err) {
+      if (my !== seq) return;
+      hits.replaceChildren(); live.textContent = t('graph.find.error');
+    }
+  };
+  const form = h('form', { class: 'g-graph__find', role: 'search', onSubmit: (ev) => { ev.preventDefault(); run(); } },
+    field({ label: t('graph.find.label'), input: inp, hint: t('graph.find.hint') }),
+    button({ label: t('graph.find.go'), variant: 'primary', type: 'submit' }));
+  return card({ title: t('graph.find.title') }, form, live, hits);
+}
+
 function guided() {
-  const lineageCards = LINEAGES.map((l) => card({ title: t(`graph.lineage.${l.key}`) },
-    h('p', { class: 'g-meta' }, t(`graph.lineage.${l.key}.sub`)),
-    h('ol', { class: 'g-graph__lineage' }, ...l.nodes.map((n) => {
-      const gl = lineageGraphLink(n); const rl = lineageReaderLink(n);
-      return h('li', { class: 'g-graph__lnode' },
-        h('span', { class: 'g-graph__year' }, String(n.year)),
-        h('span', { class: 'g-graph__lmain' },
-          h('span', { class: 'g-graph__ltitle' }, n.title),
-          h('span', { class: 'g-meta' }, n.citation)),
-        h('span', { class: 'g-graph__lacts' },
-          n.overruled ? chip({ label: t('graph.status.overruled'), tone: 'danger' }) : null,
-          n.id == null ? chip({ label: t('graph.notInCorpus'), tone: 'neutral' }) : null,
-          gl ? button({ label: t('graph.openGraph'), variant: 'ghost', href: gl, ariaLabel: `${t('graph.openGraph')}: ${n.title}` }) : null,
-          rl ? button({ label: t('graph.openJudgment'), variant: 'ghost', href: rl, ariaLabel: `${t('graph.openJudgment')}: ${n.title}` }) : null));
-    }))));
+  const wrap = h('section', { class: 'g-page g-graph' });
+  const body = h('div', { class: 'g-stack' }, skeleton({ lines: 6 }));
+  wrap.append(head(t('graph.title'), t('graph.lede.guided')), banner({ tone: 'info', message: t('graph.honest') }), finder(), body);
 
-  const pairs = card({ title: t('graph.pairs.title') },
-    h('p', { class: 'g-meta' }, t('graph.pairs.lede')),
-    h('div', {}, ...OVERRULED_PAIRS.map((p) => listRow({
-      title: `${p.from.title}  →  ${p.to.title}`,
-      meta: `${p.from.citation} · ${t('graph.pairs.overruledBy')} ${p.to.citation}`,
-      status: chip({ label: t('graph.status.overruled'), tone: 'danger' }),
-      href: graphHref(p.from.id),
-    }))));
+  const paint = ({ streams, source }) => {
+    let cur = streams[0].id;
+    const panel = h('div', { role: 'tabpanel' });
+    const bar = tabs({ items: streams.map((s) => ({ id: s.id, label: s.title })), active: cur, label: t('graph.streams.label'), onChange: (id) => { cur = id; show(); } });
+    const show = () => {
+      const s = streams.find((x) => x.id === cur) || streams[0];
+      panel.setAttribute('aria-labelledby', bar.tabId(s.id));
+      panel.replaceChildren(
+        s.subtitle ? h('p', { class: 'g-meta' }, s.subtitle) : null,
+        s.nodes.length ? h('ol', { class: 'g-graph__nodes', 'aria-label': t('graph.nodes.label') }, ...s.nodes.map(lineageNode)) : null);
+    };
+    show();
+    const pairs = source === 'local' ? card({ title: t('graph.pairs.title') },
+      h('p', { class: 'g-meta' }, t('graph.pairs.lede')),
+      h('div', {}, ...OVERRULED_PAIRS.map((p) => listRow({
+        title: `${p.from.title}  →  ${p.to.title}`,
+        meta: `${p.from.citation} · ${t('graph.pairs.overruledBy')} ${p.to.citation}`,
+        status: chip({ label: t('graph.status.overruled'), tone: 'danger' }), href: graphHref(p.from.id) })))) : null;
+    body.replaceChildren(...[
+      source === 'local' ? banner({ tone: 'warn', message: t('graph.offline'), action: { label: t('graph.retryLineages'), onClick: load } }) : null,
+      h('h2', { class: 'g-section__title' }, t('graph.guided.title')),
+      h('div', { class: 'g-graph__streams' }, bar), panel, pairs,
+      h('p', { class: 'g-meta' }, t('graph.hint.open'))].filter(Boolean));
+  };
+  async function load() {
+    body.replaceChildren(skeleton({ lines: 6 }));
+    let payload = null;
+    try { payload = await api.lineages(); } catch (e) { payload = null; }
+    paint(resolveStreams(payload, LINEAGES, localLabel));
+  }
+  load();
+  return wrap;
+}
 
-  return h('section', { class: 'g-page' },
-    head(t('graph.title'), t('graph.lede.guided')),
-    banner({ tone: 'info', message: t('graph.honest') }),
-    h('h2', { class: 'g-section__title' }, t('graph.guided.title')),
-    h('div', { class: 'g-grid-cards g-graph__lineages' }, ...lineageCards),
-    pairs,
-    h('p', { class: 'g-meta' }, t('graph.hint.open')));
+async function treatmentCard(id) {
+  const host = card({ title: t('graph.treat.title') });
+  let tc;
+  try { tc = treatmentCounts(await api.judgmentTreatments(id)); } catch (e) { tc = treatmentCounts(null); }
+  if (!tc.available) { host.append(h('p', { class: 'g-meta' }, t('graph.treat.none'))); return host; }
+  host.append(
+    h('ul', { class: 'g-graph__treat' }, ...TREATMENT_KEYS.filter((k) => tc.counts[k] > 0).map((k) =>
+      h('li', {}, h('span', {}, t(`graph.treat.${k}`)), h('strong', {}, String(tc.counts[k])))),
+      tc.other ? h('li', {}, h('span', {}, t('graph.treat.other')), h('strong', {}, String(tc.other))) : null),
+    h('p', { class: 'g-meta' }, t('graph.treat.total', { n: tc.total })));
+  return host;
 }
 
 function nodeChip(n) {
@@ -171,6 +236,7 @@ async function renderGraph(id, ctx) {
     }
     let selected = model.centerId;
     const side = h('div', { class: 'g-graph__side' });
+    const treat = h('div', {}); treatmentCard(id).then((c) => treat.replaceChildren(c));
     const drawing = drawSvg(model, (nid) => select(nid), () => selected);
     const listHost = h('div', { role: 'tabpanel' });
     const graphHost = h('div', { class: 'g-graph__scroll', role: 'tabpanel', tabindex: '0', 'aria-label': t('graph.svg.scroll') }, drawing.el);

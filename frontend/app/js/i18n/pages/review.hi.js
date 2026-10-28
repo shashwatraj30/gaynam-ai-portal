@@ -65,4 +65,9 @@ export default {
   'review.return.msg': 'लिपिक इसमें बदलाव करके इसे फिर समीक्षा के लिए भेज सकेंगे।',
   'review.return.done': 'लिपिक को लौटा दिया गया।',
   'review.export.done': 'DOCX डाउनलोड हो गया।',
+  'review.return.reason': 'लौटाने का कारण',
+  'review.return.reasonHint': 'आवश्यक। कम से कम 5 अक्षर। लिपिक को यह कारण स्टूडियो में दिखेगा।',
+  'review.return.reasonShort': 'कम से कम 5 अक्षर लिखें।',
+  'review.return.reasonServer': 'सर्वर को कम से कम 5 अक्षर का कारण चाहिए।',
+  'review.return.cancel': 'रद्द करें',
 };

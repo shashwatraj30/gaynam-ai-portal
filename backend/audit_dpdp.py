@@ -119,6 +119,7 @@ def get_ledger_blocks(limit: int = 25) -> List[Dict[str, Any]]:
     """Returns the latest ledger blocks."""
     conn = get_connection()
     cursor = conn.cursor()
+    limit = max(1, min(int(limit or 25), 500))
     cursor.execute("SELECT * FROM cryptographic_audit_ledger ORDER BY id DESC LIMIT ?", (limit,))
     rows = cursor.fetchall()
     conn.close()

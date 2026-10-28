@@ -24,3 +24,18 @@
   .g-sidebar, .g-topbar, .g-skip, .jd-noprint, .g-pdf { display: none; }
   .jd .g-page { padding: 0; }
 }
+
+/* v3: parties, paragraph anchors, cited-by, PDF actions */
+.jd-parties { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s1); margin: 0; font-family: var(--font-serif); font-size: var(--fs-read); line-height: var(--lh-read); }
+.jd-parties dt { color: var(--muted); font: 600 var(--fs-chip)/var(--lh-chip) var(--font-sans); margin-top: var(--s2); }
+.jd-parties dd { margin: 0; overflow-wrap: anywhere; }
+.jd-stack { display: flex; flex-direction: column; gap: var(--s3); align-items: flex-start; }
+.jd-para { scroll-margin-top: var(--s12); padding: var(--s2); border-radius: var(--r-md); }
+.jd-para:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.jd-para--hit { background: var(--primary-tint); }
+.jd-para__n { color: var(--muted); font-size: var(--fs-ui); padding-top: 4px; text-decoration: none; }
+.jd-para__n:hover { text-decoration: underline; color: var(--primary); }
+.jd-para__act { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); margin-top: var(--s1); }
+.jd-pdfact { display: inline-flex; flex-wrap: wrap; gap: var(--s4); }
+.jd-citedby .jd-cited { padding-left: var(--s5); }
+.jd-cited__s { display: inline-block; }

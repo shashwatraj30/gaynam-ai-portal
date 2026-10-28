@@ -22,18 +22,46 @@ export function humanizeAction(a) {
 }
 
 /** Query params for api.auditLogs; empty values are dropped. */
-export function buildAuditParams({ action, user, q, since, limit = 200 } = {}) {
+export const AUDIT_PAGE_SIZE = 50;
+export function buildAuditParams({ action, user, q, since, until, role, limit = AUDIT_PAGE_SIZE, offset = 0 } = {}) {
   const p = {};
   if (action && action !== 'ALL') p.action = action;
   if (user && user.trim()) p.user = user.trim();
   if (q && q.trim()) p.q = q.trim();
   if (since) p.since = since;
+  if (until) p.until = until;
+  if (role && role !== 'ALL') p.role = role;
   if (limit) p.limit = limit;
+  if (offset > 0) p.offset = offset;
   return p;
+}
+
+/** Params for the server CSV export: the same filters, no paging (the server streams every row). excel adds bom=1. */
+export function exportParams(filters = {}, { excel = false } = {}) {
+  const p = buildAuditParams({ ...filters, limit: 0, offset: 0 });
+  if (excel) p.bom = 1;
+  return p;
+}
+
+/** Pagination summary from the server's {total, offset} and the page size. */
+export function pageInfo(total, offset = 0, size = AUDIT_PAGE_SIZE, shown = size) {
+  const tot = Math.max(0, Number(total) || 0);
+  const off = Math.max(0, Number(offset) || 0);
+  const n = Math.min(Math.max(0, shown), Math.max(0, tot - off));
+  return {
+    total: tot, from: n ? off + 1 : 0, to: off + n, hasPrev: off > 0, hasNext: off + size < tot,
+    prevOffset: Math.max(0, off - size), nextOffset: off + size, page: Math.floor(off / size) + 1, pages: Math.max(1, Math.ceil(tot / size)),
+  };
+}
+
+export function distinctRoles(rows = []) {
+  return [...new Set(rows.map((r) => r.user_role).filter(Boolean))].sort();
 }
 
 /** Client-side filter (the server may ignore params today, so the page always applies this too). */
 export function filterAuditRows(rows = [], f = {}) {
+  const until = f.until ? String(f.until) : '';
+  const role = f.role && f.role !== 'ALL' ? String(f.role).toLowerCase() : '';
   const user = String(f.user || '').trim().toLowerCase();
   const q = String(f.q || '').trim().toLowerCase();
   const since = f.since ? String(f.since) : '';
@@ -42,6 +70,8 @@ export function filterAuditRows(rows = [], f = {}) {
     if (user && !`${r.user_name || ''} ${r.user_role || ''}`.toLowerCase().includes(user)) return false;
     if (q && !`${r.action || ''} ${r.details || ''} ${r.user_name || ''}`.toLowerCase().includes(q)) return false;
     if (since && String(r.timestamp || '').slice(0, 10) < since) return false;
+    if (until && String(r.timestamp || '').slice(0, 10) > until) return false;
+    if (role && String(r.user_role || '').toLowerCase() !== role) return false;
     return true;
   });
 }
@@ -92,4 +122,12 @@ export function formatDuration(ms) {
   const n = Number(ms);
   if (!Number.isFinite(n) || n < 0) return '—';
   return n < 1000 ? `${Math.round(n)} ms` : `${(n / 1000).toFixed(1)} s`;
+}
+
+export { isSimulatedSync } from './home-logic.js';
+
+/** Plain-text summary of the active filters for the print report header. */
+export function filterSummary(f = {}) {
+  return Object.entries({ action: f.action !== 'ALL' ? f.action : '', user: f.user, role: f.role !== 'ALL' ? f.role : '', q: f.q, since: f.since, until: f.until })
+    .filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${String(v).trim()}`);
 }

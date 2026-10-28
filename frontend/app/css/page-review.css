@@ -10,3 +10,8 @@
 .review__hash { font-family: ui-monospace, Consolas, monospace; font-size: var(--fs-meta); word-break: break-all; }
 .review__reason { color: var(--warn); background: var(--warn-tint); border-radius: var(--r-md); padding: var(--s3); margin-bottom: var(--s3); }
 .review__actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
+
+/* Return-for-changes reason */
+.review__reasonbox { display: flex; flex-direction: column; gap: var(--s2); }
+.review__reasonerr { color: var(--danger); font-weight: 600; margin: 0; }
+.review__reasonerr:empty { display: none; }

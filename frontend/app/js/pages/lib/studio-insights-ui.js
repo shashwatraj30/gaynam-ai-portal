@@ -1,5 +1,7 @@
 // Studio right-rail insight panels: Applicable sections, Solved precedents, Why the judgment was given.
-// createInsights({ api }) -> { el, update({params, texts, engine, precedents}), destroy() }.
+// createInsights({ api, onInsert }) -> { el, update({params, texts, engine, precedents, authorities, canEdit}), destroy() }.
+// Every precedent row has "Insert into section 10 / 15": onInsert(sectionNumber, precedent) -> {added} (the page edits the text and
+// marks it dirty); the result is announced in an aria-live region. Pinned authorities (from the hand-off) are listed first.
 // The element is persistent (the page re-appends it when it repaints); each panel is a collapsible card
 // (button with aria-expanded) with a "?" help toggle. Solved precedents search lazily (only while the panel is open),
 // debounced, one search per section, and stale responses are ignored.
@@ -13,16 +15,20 @@ import { errorState } from '../../ui/error-state.js';
 import { emptyState } from '../../ui/empty-state.js';
 import { listRow } from '../../ui/list-row.js';
 import { precedentChip } from '../../ui/status.js';
+import { button } from '../../ui/button.js';
 import { sectionsForDraft, pickSearchSections, sectionsKey, buildSearchBody, mergeResults, createLatest, deriveWhy, sectionLabel, DEBOUNCE_MS } from './studio-insights.js';
 
 const IDLE = { status: 'idle', rows: [], failed: 0, total: 0, more: 0, error: null };
 
-export function createInsights({ api, setTimer = (f, ms) => setTimeout(f, ms), clearTimer = (id) => clearTimeout(id) }) {
+export function createInsights({ api, onInsert = () => ({ added: false }), setTimer = (f, ms) => setTimeout(f, ms), clearTimer = (id) => clearTimeout(id) }) {
   const el = h('div', { class: 'studio-ins' });
   const latest = createLatest();
   const open = { sections: true, prec: false, why: true };
   const help = { sections: false, prec: false, why: false };
-  let input = { params: {}, texts: {}, engine: '', precedents: [] };
+  let input = { params: {}, texts: {}, engine: '', precedents: [], authorities: [], canEdit: false };
+  const live = h('p', { class: 'sr-only', role: 'status', 'aria-live': 'polite' });
+  let liveTimer = null;
+  function say(msg) { live.textContent = ''; if (liveTimer != null) clearTimer(liveTimer); liveTimer = setTimer(() => { live.textContent = msg; }, 30); }
   let lastKey = null; let timer = null; let ctl = null; let destroyed = false;
   let fetchState = { ...IDLE };
   const bodies = {};
@@ -71,23 +77,37 @@ export function createInsights({ api, setTimer = (f, ms) => setTimeout(f, ms), c
   }
 
   // ---------- panel 2 ----------
+  function precRow(p) {
+    const pc = precedentChip(p.precedent_status || p.status, { curated: p.is_curated === true });
+    const name = p.title || p.case_title || p.citation || '-';
+    const insert = (n) => {
+      const r = onInsert(n, p);
+      say(r && r.added ? t('studio.ins.prec.inserted', { n }) : t(input.canEdit ? 'studio.ins.prec.already' : 'studio.ins.prec.locked', { n }));
+    };
+    return h('div', { class: 'studio-ins__prec' },
+      listRow({
+        title: name,
+        meta: [p.citation, p.court, p.matchedSections && p.matchedSections.length ? t('studio.ins.prec.matched', { sections: p.matchedSections.join(', ') }) : ''].filter(Boolean).join(' · '),
+        status: pc.label ? chip({ label: pc.label, tone: pc.tone }) : null, href: p.id != null ? `#/judgments/${p.id}` : undefined,
+      }),
+      input.canEdit ? h('div', { class: 'studio-ins__ins' },
+        button({ label: t('studio.ins.prec.insert10'), variant: 'ghost', ariaLabel: t('studio.ins.prec.insertAria10', { title: name }), onClick: () => insert(10) }),
+        button({ label: t('studio.ins.prec.insert15'), variant: 'ghost', ariaLabel: t('studio.ins.prec.insertAria15', { title: name }), onClick: () => insert(15) })) : null);
+  }
   function paintPrec() {
     const b = bodies.prec; clear(b);
     const s = fetchState;
+    b.append(live);
+    if (input.authorities && input.authorities.length) {
+      b.append(h('h3', { class: 'studio-ins__sub' }, t('studio.ins.prec.pinned')), h('div', { class: 'studio-ins__rows' }, ...input.authorities.map(precRow)));
+    }
     if (s.status === 'idle') { b.append(emptyState({ title: t('studio.ins.prec.idle'), message: t('studio.ins.prec.idleMsg') })); return; }
     if (s.status === 'loading') { b.append(skeleton({ lines: 4 })); return; }
     if (s.status === 'error') { b.append(errorState({ message: s.error?.message, requestId: s.error?.requestId, onRetry: () => schedule({ now: true, force: true }), retryLabel: t('state.retry') })); return; }
     if (s.more) b.append(banner({ tone: 'info', message: t('studio.ins.prec.more', { n: s.total, extra: s.more }) }));
     if (s.failed) b.append(banner({ tone: 'warn', message: t('studio.ins.prec.partial', { n: s.failed, total: s.total }), action: { label: t('state.retry'), onClick: () => schedule({ now: true, force: true }) } }));
     if (!s.rows.length) { b.append(emptyState({ title: t('studio.ins.prec.empty'), message: t('studio.ins.prec.emptyMsg') })); return; }
-    b.append(h('div', { class: 'studio-ins__rows' }, ...s.rows.map((p) => {
-      const pc = precedentChip(p.precedent_status, { curated: p.is_curated === true });
-      return listRow({
-        title: p.title || p.case_title || p.citation || '-',
-        meta: [p.citation, p.court, t('studio.ins.prec.matched', { sections: p.matchedSections.join(', ') })].filter(Boolean).join(' · '),
-        status: chip({ label: pc.label, tone: pc.tone }), href: p.id != null ? `#/judgments/${p.id}` : undefined,
-      });
-    })));
+    b.append(h('div', { class: 'studio-ins__rows' }, ...s.rows.map(precRow)));
   }
 
   // ---------- panel 3 ----------
@@ -150,8 +170,10 @@ export function createInsights({ api, setTimer = (f, ms) => setTimeout(f, ms), c
   return {
     el,
     update(next) {
+      const prevKey = JSON.stringify([input.canEdit, (input.authorities || []).map((a) => a.citation || a.title)]);
       input = { ...input, ...next };
       paintSections(); paintWhy();
+      if (JSON.stringify([input.canEdit, (input.authorities || []).map((a) => a.citation || a.title)]) !== prevKey) paintPrec();
       schedule();
     },
     destroy() { destroyed = true; if (timer != null) clearTimer(timer); latest.invalidate(); if (ctl) ctl.abort(); },

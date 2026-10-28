@@ -11,10 +11,11 @@ export function statusChip(status, curated) {
   return chip({ label: c.label, tone: c.tone, icon: c.tone === 'danger' ? 'alert' : undefined });
 }
 
-export async function copyText(text) {
+/** Copy to the clipboard and toast `doneKey` (default "Citation copied"). */
+export async function copyText(text, doneKey = 'jr.copied') {
   try {
     await navigator.clipboard.writeText(text);
-    toast(t('jr.copied'), { tone: 'primary' });
+    toast(t(doneKey), { tone: 'primary' });
   } catch {
     toast(t('jr.copyFailed'), { tone: 'warn' });
   }

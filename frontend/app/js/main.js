@@ -1,5 +1,5 @@
 // Boot: validate token (api.auth.me), mount shell, register pages, start router, wire offline banner.
-import { api, getToken, getUser, setSession, clearSession } from './api.js';
+import { api, getToken, getUser, setSession, clearSession, loadProfile } from './api.js';
 import { configureRouter, startRouter, refresh } from './router.js';
 import { mountShell } from './ui/shell.js';
 import { ensurePagesFor } from './pages/index.js';
@@ -8,14 +8,10 @@ import { store } from './store.js';
 import { loadCss } from './ui/shell.js';
 import { applyDensity, loadDensity, applyFontSize, loadFontSize } from './pages/lib/settings-logic.js';
 
-async function loadProfile() {
+async function loadBootProfile() {
   const token = getToken();
   if (!token) return null;
-  const r = await api.auth.me();
-  const rd = r.role_details || {};
-  const user = { ...(r.user || {}), permissions: rd.permissions || [], role_title: rd.title || '', role_details: rd };
-  setSession({ token, user });
-  return user;
+  return loadProfile(token);
 }
 
 async function toast(message, opts) {
@@ -31,7 +27,7 @@ async function boot() {
   const root = document.getElementById('app');
 
   if (getToken()) {
-    try { await loadProfile(); }
+    try { await loadBootProfile(); }
     catch (e) { if (e.status === 401 || e.status === 403) clearSession(); /* offline: keep cached user */ }
   }
 
@@ -50,7 +46,7 @@ async function boot() {
     setHistoryHandler: (fn) => shell.setHistoryHandler(fn),
     onLayout: (bare) => shell.setBare(bare),
     onRoute: ({ path }) => shell.setActive(path),
-    ensureProfile: () => (profilePromise ||= loadProfile().finally(() => { profilePromise = null; })),
+    ensureProfile: () => (profilePromise ||= loadBootProfile().finally(() => { profilePromise = null; })),
   });
 
   window.addEventListener('gyanam:session', () => { shell.rebuild(); refreshBadges(); });

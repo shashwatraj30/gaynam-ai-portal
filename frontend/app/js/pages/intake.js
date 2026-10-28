@@ -1,7 +1,8 @@
 // New matter: '/matters/new'. Three steps: 1 add documents (file, drag-drop, or pasted text with Redact),
-// 2 check what was read (editable fields; 'Sample data' banner when source is canned_sample/fallback),
+// 2 check what was read (editable fields; 'Sample data' banner when source is "sample"; honest banner when "failed"),
 // 3 confirm issues (human gate #1), then store 'intakeParams' and go to the Studio '/drafts/new'.
-// API: api.ocrProcessBrief(file), api.uploadPleading(file), api.ocrAnonymize(text). Nothing is saved before step 3.
+// API: api.documents.create (every read document is saved as a Document), saveExtraction (versioned, 409 handled),
+// confirm, draftParams; api.ocrAnonymize(text) for the Redact button on pasted text.
 import { h, clear } from '../dom.js';
 import { api } from '../api.js';
 import { store } from '../store.js';
@@ -15,13 +16,14 @@ import { banner } from '../ui/banner.js';
 import { stepper } from '../ui/stepper.js';
 import { modal } from '../ui/modal.js';
 import { skeleton } from '../ui/skeleton.js';
-import { field, input, textarea } from '../ui/form.js';
+import { field, input, textarea, select } from '../ui/form.js';
 import en from '../i18n/pages/intake.en.js';
 import hi from '../i18n/pages/intake.hi.js';
 import mEn from '../i18n/pages/matters.en.js';
 import mHi from '../i18n/pages/matters.hi.js';
 import {
-  FIELD_KEYS, checkFile, humanSize, extOf, isImageFile, uploadErrorKey, normalizeBrief, normalizePleading,
+  FIELD_KEYS, DOC_TYPES, defaultDocType, validDocType, checkFile, humanSize, extOf, isImageFile, uploadErrorKey,
+  normalizeDocument, extractionBody, isConflict, saveErrorKey, mergeDraftParams,
   parseIssues, validateFields, canProceed, buildIntakeParams, sourceNoteKey,
 } from './lib/intake-logic.js';
 import { ZOOM_STEPS, nextZoom, keyToAction } from './lib/intake-zoom.js';
@@ -32,8 +34,8 @@ addMessages('hi', hi);
 addMessages('en', mEn);
 addMessages('hi', mHi);
 
-const MULTILINE = new Set(['facts', 'prayer', 'statutory_provisions']);
-const WIDE = new Set(['case_title', 'statutory_provisions', 'facts', 'prayer']);
+const MULTILINE = new Set(['facts', 'prayer', 'statutory_provisions', 'petitioner_arguments', 'respondent_arguments']);
+const WIDE = new Set(['case_title', 'statutory_provisions', 'facts', 'prayer', 'petitioner_arguments', 'respondent_arguments']);
 
 let cleanup = () => {};
 
@@ -42,7 +44,7 @@ function render(params, ctx) {
   const st = {
     step: '1', file: null, previewUrl: '', filename: '', paste: '', pasteRedactions: 0, pasteMsg: '',
     busy: false, error: '', result: null, fields: {}, original: {}, issues: '', edited: false, sampleAck: false, ack: false,
-    ctl: null,
+    ctl: null, docType: 'PETITION', matterKey: (ctx.query && ctx.query.get('matter')) || '', saving: false,
   };
   const live = h('p', { class: 'g-sr', role: 'status', 'aria-live': 'polite' });
   const stepHost = h('div', {});
@@ -74,8 +76,34 @@ function render(params, ctx) {
     st.fields = { ...res.fields }; st.original = { ...res.fields };
     st.issues = parseIssues(res.issues).join('\n');
     st.edited = false; st.sampleAck = false; st.ack = false; st.error = '';
-    say(res.isSample ? t('intake.sample.banner') : t('intake.check.title'));
+    say(res.failed ? t('intake.failed.banner') : res.isSample ? t('intake.sample.banner') : t('intake.check.title'));
     go('2');
+  }
+  /** Save the current fields + issues as a new extraction version. Returns true on success. */
+  async function persist() {
+    const r = st.result;
+    try {
+      const doc = await api.documents.saveExtraction(r.id, extractionBody(st.fields, st.issues, r.version));
+      const n = normalizeDocument(doc);
+      r.version = n.version; r.authorities = n.authorities;
+      return true;
+    } catch (err) {
+      if (isConflict(err)) {
+        // someone saved a newer version: adopt its version number but keep what the user typed
+        try { const n = normalizeDocument(await api.documents.get(r.id)); r.version = n.version; } catch { /* ignore */ }
+      }
+      const key = saveErrorKey(err);
+      st.error = key ? t(key) : '';
+      return false;
+    }
+  }
+  async function createDoc(input, filename) {
+    st.busy = true; st.error = ''; st.ctl = new AbortController(); paint();
+    try {
+      const doc = await api.documents.create({ ...input, docType: st.docType, matterKey: st.matterKey || undefined }, { signal: st.ctl.signal });
+      st.busy = false;
+      loaded(normalizeDocument(doc), filename);
+    } catch (err) { fail(err); }
   }
   function fail(err) {
     const key = uploadErrorKey(err);
@@ -85,24 +113,19 @@ function render(params, ctx) {
   async function readFile(file) {
     const bad = checkFile(file);
     if (bad) { st.error = t(bad); paint(); return; }
-    revoke(); st.file = file; st.error = ''; st.busy = true; st.ctl = new AbortController(); paint();
+    revoke(); st.file = file;
     if (isImageFile(file)) { try { st.previewUrl = URL.createObjectURL(file); } catch { st.previewUrl = ''; } }
-    try {
-      const resp = await api.ocrProcessBrief(file, { signal: st.ctl.signal });
-      if (!resp || resp.success === false || !resp.metadata) throw Object.assign(new Error('unreadable'), { status: 422 });
-      st.busy = false;
-      loaded(normalizeBrief(resp), file.name);
-    } catch (err) { fail(err); }
+    await createDoc({ file }, file.name);
   }
   async function readPasted() {
     const text = st.paste.trim();
     if (!text) { st.error = t('intake.paste.empty'); paint(); return; }
-    revoke(); st.file = null; st.error = ''; st.busy = true; st.ctl = new AbortController(); paint();
-    try {
-      const resp = await api.uploadPleading(new File([text], 'pasted_pleading.txt', { type: 'text/plain' }), { signal: st.ctl.signal });
-      st.busy = false;
-      loaded(normalizePleading(resp, st.pasteRedactions), 'pasted_pleading.txt');
-    } catch (err) { fail(err); }
+    revoke(); st.file = null;
+    await createDoc({ text }, 'pasted_pleading.txt');
+  }
+  async function readSample(key) {
+    revoke(); st.file = null; st.docType = defaultDocType(key);
+    await createDoc({ sample: key }, key);
   }
   async function redact(areaEl, btn) {
     const text = areaEl.value.trim();
@@ -153,11 +176,18 @@ function render(params, ctx) {
     const samples = h('div', { class: 'in-samples' },
       h('span', { class: 'in-note' }, t('intake.samples.label')),
       button({ label: t('intake.samples.pleading'), variant: 'ghost', onClick: () => useSample(SAMPLE_PLEADING) }),
-      button({ label: t('intake.samples.degraded'), variant: 'ghost', onClick: () => useSample(SAMPLE_DEGRADED) }));
+      button({ label: t('intake.samples.degraded'), variant: 'ghost', onClick: () => useSample(SAMPLE_DEGRADED) }),
+      button({ label: t('intake.samples.fir0417'), variant: 'ghost', onClick: () => readSample('fir_04_17') }),
+      button({ label: t('intake.samples.fir0617'), variant: 'ghost', onClick: () => readSample('fir_06_17') }));
+
+    const typeSel = select({ name: 'doc_type', value: st.docType, options: DOC_TYPES.map((v) => ({ value: v, label: t(`intake.doctype.${v}`) })) });
+    typeSel.addEventListener('change', () => { st.docType = validDocType(typeSel.value); });
 
     return h('div', { class: 'g-stack' },
       st.error ? banner({ tone: 'danger', message: st.error }) : null,
       h('h2', { class: 'g-section__title' }, t('intake.add.title')),
+      st.matterKey ? h('p', { class: 'in-note' }, t('intake.forMatter', { key: st.matterKey })) : null,
+      field({ label: t('intake.doctype.label'), input: typeSel, hint: t('intake.doctype.hint') }),
       samples,
       h('div', { class: 'in-two' }, zone, pasteCard));
   }
@@ -212,12 +242,15 @@ function render(params, ctx) {
     const ackBox = h('input', { type: 'checkbox', id: 'in-sample-ack' });
     ackBox.checked = st.sampleAck;
     ackBox.addEventListener('change', () => { st.sampleAck = ackBox.checked; syncGate(); });
-    const next = button({ label: t('intake.toConfirm'), variant: 'primary', onClick: () => {
+    const next = button({ label: t('intake.toConfirm'), variant: 'primary', onClick: async () => {
       const errs = validateFields(st.fields);
       FIELD_KEYS.forEach((k) => fieldNodes[k].setError(errs[k] ? t(errs[k]) : null));
       if (Object.keys(errs).length) { st.error = t('intake.err.fixFields'); errMsg.textContent = st.error; return; }
       if (!canProceed({ isSample: r.isSample, edited: st.edited, acknowledged: st.sampleAck })) return;
-      errMsg.textContent = ''; go('3');
+      next.disabled = true; errMsg.textContent = '';
+      const ok = await persist();
+      if (!ok) { errMsg.textContent = st.error; next.disabled = false; return; }
+      st.error = ''; go('3');
     } });
     const errMsg = h('p', { class: 'in-err', role: 'alert' });
     function syncGate() {
@@ -232,14 +265,17 @@ function render(params, ctx) {
       h('span', { class: 'in-fname' }, st.filename),
       st.file ? h('span', { class: 'in-meta' }, `${(extOf(st.file.name) || 'file').toUpperCase()} · ${humanSize(st.file.size)}`) : null,
       h('div', { class: 'in-chips' },
-        chip({ label: r.isSample ? t('intake.sample.banner') : t('intake.read.title'), tone: r.isSample ? 'warn' : 'primary', icon: r.isSample ? 'alert' : 'check' }),
+        chip({ label: r.failed ? t('intake.failed.banner') : r.isSample ? t('intake.sample.banner') : t('intake.read.title'),
+          tone: r.failed ? 'danger' : r.isSample ? 'warn' : 'primary', icon: r.isSample || r.failed ? 'alert' : 'check' }),
         r.redactions ? chip({ label: t('intake.redactions', { n: formatNumber(r.redactions) }), tone: 'info' }) : null),
       r.isSample ? null : h('p', { class: 'in-note' }, t(sourceNoteKey(r.source, r.vlm))),
+      r.id !== '' ? h('a', { class: 'in-note', href: `#/documents/${encodeURIComponent(r.id)}` }, t('intake.openInDocuments')) : null,
       r.chars ? h('p', { class: 'in-meta' }, t('intake.chars', { n: formatNumber(r.chars) })) : null,
       r.blanked ? h('p', { class: 'in-note' }, t('intake.blanked', { n: formatNumber(r.blanked) })) : null,
       button({ label: t('intake.file.replace'), variant: 'secondary', onClick: () => { revoke(); st.result = null; go('1'); } }));
 
     return h('div', { class: 'g-stack' },
+      r.failed ? banner({ tone: 'danger', message: `${t('intake.failed.banner')}. ${t('intake.failed.detail')}` }) : null,
       r.isSample ? banner({ tone: 'warn', message: `${t('intake.sample.banner')}. ${t('intake.sample.detail')}` }) : null,
       r.isSample ? h('label', { class: 'in-check', for: 'in-sample-ack' }, ackBox, h('span', {}, t('intake.sample.ack'))) : null,
       h('div', { class: 'in-cols' }, side,
@@ -264,12 +300,24 @@ function render(params, ctx) {
     area.addEventListener('input', () => { st.issues = area.value; errMsg.textContent = ''; paintPreview(); });
     ackBox.addEventListener('change', () => { st.ack = ackBox.checked; errMsg.textContent = ''; });
     paintPreview();
-    const goBtn = button({ label: t('intake.confirm.go'), variant: 'primary', onClick: () => {
+    const goBtn = button({ label: t('intake.confirm.go'), variant: 'primary', onClick: async () => {
       if (!parseIssues(st.issues).length) { errMsg.textContent = t('intake.confirm.needIssue'); area.focus(); return; }
       if (!st.ack) { errMsg.textContent = t('intake.confirm.needAck'); ackBox.focus(); return; }
       const r = st.result;
-      store.set('intakeParams', buildIntakeParams({ fields: st.fields, issues: st.issues, source: r.source, isSample: r.isSample,
-        redactions: r.redactions, filename: st.filename }), { session: true });
+      goBtn.disabled = true; errMsg.textContent = '';
+      try {
+        if (!(await persist())) { errMsg.textContent = st.error; goBtn.disabled = false; return; }
+        await api.documents.confirm(r.id, r.version);
+        const resp = await api.documents.draftParams(r.id);
+        const local = buildIntakeParams({ fields: st.fields, issues: st.issues, source: r.source, isSample: r.isSample,
+          redactions: r.redactions, filename: st.filename, documentId: r.id, authorities: r.authorities });
+        store.set('intakeParams', mergeDraftParams(local, resp), { session: true });
+      } catch (err) {
+        const key = saveErrorKey(err);
+        errMsg.textContent = key ? t(key) : '';
+        if (isConflict(err)) { try { r.version = normalizeDocument(await api.documents.get(r.id)).version; } catch { /* ignore */ } }
+        goBtn.disabled = false; return;
+      }
       revoke();
       ctx.navigate('#/drafts/new');
     } });
@@ -281,7 +329,8 @@ function render(params, ctx) {
         card({ title: t('intake.confirm.preview') }, preview)),
       h('label', { class: 'in-check', for: 'in-ack' }, ackBox, h('span', {}, t('intake.confirm.ack'))),
       errMsg,
-      h('div', { class: 'in-nav' }, button({ label: t('intake.back'), onClick: () => go('2') }), goBtn));
+      h('div', { class: 'in-nav' }, button({ label: t('intake.back'), onClick: () => go('2') }),
+        button({ label: t('intake.openInDocuments'), variant: 'ghost', href: `#/documents/${encodeURIComponent(st.result.id)}` }), goBtn));
   }
   const r0 = () => st.result;
 

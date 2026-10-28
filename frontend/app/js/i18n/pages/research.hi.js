@@ -25,8 +25,16 @@ const hi = {
   'rs.noneTitle': 'कोई प्राधिकार नहीं मिला', 'rs.noneMsg': 'व्यापक शब्द आज़माएँ या कोई फ़िल्टर हटाएँ।', 'rs.noneFiltered': 'आपके वर्ष या धारा फ़िल्टर ने सभी परिणाम हटा दिए। उन्हें ढीला करें।',
   'rs.count': '{total} में से {shown} प्राधिकार, पीठ की शक्ति के क्रम में; अधिक्रमित अंत में।', 'rs.filtered': '({n} फ़िल्टर सक्रिय)',
   'rs.sourceTitle': 'स्रोत', 'rs.sourceEmpty': 'मेटाडेटा और स्रोत PDF यहाँ देखने के लिए कोई प्राधिकार चुनें।', 'rs.sourceSub': 'चयनित प्राधिकार का स्रोत',
-  'rs.checks': 'जाँच', 'rs.chk.found': 'निर्णय कॉर्पस में मौजूद है', 'rs.chk.overruled': 'क्या अधिक्रमित है?', 'rs.chk.quote': 'उद्धरण-से-अनुच्छेद मिलान', 'rs.chk.later': 'अभी जाँचा नहीं गया',
+  'rs.checks': 'जाँच', 'rs.chk.found': 'निर्णय कॉर्पस में मौजूद है', 'rs.chk.overruled': 'क्या अधिक्रमित है?', 'rs.chk.quote': 'उद्धरण-से-अनुच्छेद मिलान', 'rs.chk.later': 'निर्णय का पाठ चाहिए (अनुच्छेद अभी लोड नहीं हैं)',
   'rs.detailFailed': 'स्रोत PDF लोड नहीं हो सका।',
+  'rs.sortLabel': 'क्रम', 'rs.sort.bench': 'पीठ की शक्ति', 'rs.sort.relevance': 'प्रासंगिकता', 'rs.sort.newest': 'नवीनतम पहले', 'rs.sort.oldest': 'सबसे पुराने पहले',
+  'rs.loadMore': 'और परिणाम लोड करें', 'rs.loadingMore': 'लोड हो रहा है', 'rs.loadMoreFailed': 'और परिणाम लोड नहीं हो सके।', 'rs.relaxed': 'आपके फ़िल्टर से कोई परिणाम नहीं मिला, इसलिए ये परिणाम फ़िल्टर को अनदेखा करते हैं।',
+  'rs.saveSearch': 'खोज सहेजें', 'rs.saveTitle': 'इस खोज को सहेजें', 'rs.saveName': 'नाम', 'rs.saveHint': 'प्रश्न और फ़िल्टर इस नाम से सहेजे जाते हैं।', 'rs.saveConfirm': 'सहेजें', 'rs.saveCancel': 'रद्द करें',
+  'rs.saveNeedName': 'नाम लिखें।', 'rs.saveNeedQuery': 'पहले खोज चलाएँ।', 'rs.saveDone': 'खोज सहेजी गई', 'rs.saveFailed': 'खोज सहेजी नहीं जा सकी।',
+  'rs.savedTitle': 'सहेजी गई खोजें', 'rs.savedEmpty': 'अभी कोई सहेजी गई खोज नहीं।', 'rs.savedOpen': 'सहेजी गई खोज {name} खोलें', 'rs.savedDelete': 'सहेजी गई खोज {name} हटाएँ', 'rs.savedDeleted': 'सहेजी गई खोज हटाई गई', 'rs.savedLoadFailed': 'सहेजी गई खोजें लोड नहीं हो सकीं।',
+  'rs.exportCsv': 'परिणाम निर्यात करें (CSV)', 'rs.exported': 'CSV डाउनलोड हो गई', 'rs.chipsLabel': 'प्रमुख निर्णय और नमूना खोजें',
+  'rs.district': 'जिला: {d}', 'rs.briefHandoff': 'पीठ संक्षेप आपके मसौदे में ले जाया गया',
+  'rs.total': '{total} मिलते-जुलते प्राधिकरणों में से {shown} दिखाए जा रहे हैं', 'rs.totalUnknown': '{shown} प्राधिकरण दिखाए जा रहे हैं',
 };
 addMessages('hi', hi);
 export default hi;

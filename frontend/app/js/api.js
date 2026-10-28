@@ -33,7 +33,10 @@ export function setSession({ token, user }) {
     }
   } catch { /* ignore */ }
   const now = !!token;
-  if (was !== now) emit('gyanam:session', { signedIn: now });
+  // Fire on sign-in/out, and also whenever an already-signed-in session's user is replaced (e.g. loadProfile()
+  // enriching a bare SSO/login response with permissions) — the shell only rebuilds its permission-gated
+  // sidebar on this event, so a silent user swap would otherwise show stale/empty permissions until reload.
+  if (was !== now || (now && user)) emit('gyanam:session', { signedIn: now });
 }
 export function clearSession() { setSession({ token: null, user: null }); }
 export function getUser() {
@@ -234,4 +237,17 @@ export const api = {
     draftParams: (id) => post(`/api/documents/${enc(id)}/draft-params`, {}, { noRedirect: true }),
   },
 };
+
+/** Fetch /api/auth/me, merge its role_details into a permissions-bearing user, store it, and return it.
+ * SSO/login responses carry the bare directory record (no permissions) — callers that just set a session
+ * from one of those must call this before anything reads can(), or every permission-gated nav item hides
+ * itself until the next reload. */
+export async function loadProfile(token) {
+  const r = await api.auth.me();
+  const rd = r.role_details || {};
+  const user = { ...(r.user || {}), permissions: rd.permissions || [], role_title: rd.title || '', role_details: rd };
+  setSession({ token, user });
+  return user;
+}
+
 export default api;

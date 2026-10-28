@@ -59,6 +59,7 @@ Single FastAPI app, `backend/server.py` (about 900 lines, all routes). It uses o
 - The redesign plan is `docs/UI_REDESIGN_PLAN.md` and the screen designs are in `docs/ui_designs/`.
 - The DB also holds 52 drafts, about 1.2k audit rows, about 1.2k ledger blocks and 42 sync logs.
 - The `-shm` and `-wal` files travel with the DB. Don't copy the `.db` alone while the server runs.
+- v3 added `documents`, `document_text`, `document_extractions`, `document_pins` (the Documents feature), `saved_searches` (Research), `user_status` (persisted suspension), `judgment_paragraphs` and `judgment_treatments` (empty until a real paragraph/citator source is wired up), and `lineage_streams`/`lineage_nodes` (seeded once from the front-end's hard-coded lineage data). Migrations now run via `database.run_migrations()`, tracked in a `schema_migrations` table and safe to re-run (`CREATE TABLE IF NOT EXISTS` plus idempotent seeding); it has been run against the real 329 MB DB without touching existing rows.
 
 ### Frontend (`frontend/index.html`, about 6.7k lines)
 
@@ -78,6 +79,7 @@ Role-based UI is built client-side in `applyRoleUI` and the related `update*ForR
 These matter if the code is ever used beyond a demo.
 
 - **Auth is not enforced.** `/api/auth/login` ignores the password and invents a user for any unknown email. `get_current_user_from_header` falls back to the Hon'ble Justice profile when no token is sent. No route uses `check_permission`. Admin routes (`/api/admin/*`, audit CSV, sync trigger) are open. CORS is `*` with credentials. `log_audit` always records the same user and IP (`127.0.0.1`).
+  - This has been tightened since: `GYANAM_ALLOW_LEGACY_HEADER` now defaults to `0` (was `1`), so the tokenless `X-Gyanam-Legacy` header no longer works unless explicitly re-enabled. Several endpoints that used to answer anonymously now require a token: `/api/dashboard_metrics`, `/api/cases/recent`, `/api/verify_citations`, `/api/sync/status`, `/api/sync/history`, `/api/ocr/anonymize`, `/api/search`, `/api/judgment/{id}`. `/api/status` without a token returns only `{status, version, time}`. `/api/admin/toggle_user` suspension now persists in the `user_status` table (survives restarts) instead of an in-memory dict, and `get_current_user_from_header` rejects suspended users with 403 `ACCOUNT_SUSPENDED`. `/api/auth/login` and the passwordless SSO picker are unchanged (still no password) — see `docs/legacy_review/COMPARE_B.md` for what's still open.
 - **Fabricated data in responses.**
   - `/api/dashboard_metrics` pads counts (`max(search_count, 142)`, `active_users: 6`, `dpdp_redactions_total: 842`, `sha256_ledger_blocks: 256`, latency "< 8ms").
   - `/api/status` claims "air_gap_ready" while the app can call Gemini and Hugging Face.
@@ -107,3 +109,6 @@ These matter if the code is ever used beyond a demo.
 - Secrets and settings live in `<project>/.env` (gitignored; loaded by `backend/envload.py`; real environment variables win): `GYANAM_JWT_SECRET`, `GEMINI_API_KEY` (optional), `GYANAM_DB_PATH`, `GYANAM_ALLOW_LEGACY_HEADER`.
 - Self-hosted fonts are in `frontend/app/fonts/` (Fontsource, OFL). Backend tests: `python -m pytest` (fixture DB only, never the real one).
 - `/api/dashboard_metrics` and `/api/status` now return real counts only (no padded numbers or fixed compliance claims). Judicial roles can now upload pleadings (`UPLOAD_PLEADING`).
+
+### Documents (v3)
+- New sidebar section "Matters" (`#/matters`, `#/matters/new`, `#/documents/:id`) stores pleadings server-side instead of the old intake-only flow: upload or paste -> OCR + redaction -> edit the extracted fields -> confirm -> research precedents -> pin up to 5 authorities -> hand off to a draft. `/matters/new` now saves through this (`POST /api/documents`) instead of an ad hoc intake blob; nothing is held only in browser state. A document can't feed a draft until it is explicitly confirmed (`POST /api/documents/{id}/confirm`, requires a non-empty case title, facts and at least one issue) — this is the "confirm-before-draft" gate. Confirmed documents expose `/draft-params`, which `save_draft`/`draft_judgment` accept as `document_id` to link the draft back to its source document. Routes live in `document_routes.py`, service logic in `documents.py`; see `docs/API_V3_CONTRACT.md` and `docs/API.md` for the full surface.

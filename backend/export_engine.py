@@ -15,6 +15,8 @@ Generates production-grade court deliverables:
 import os
 import io
 import json
+import re
+import html as html_lib
 import hashlib
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -300,11 +302,12 @@ def render_printable_html(draft_data: Dict[str, Any]) -> str:
     title = draft_data.get("case_title", "Petitioner v. Respondent")
     court_raw, court_header_str, pet, resp, pet_label, resp_label = _resolve_parties_and_court(draft_data)
     
+    esc = lambda v: html_lib.escape(str(v if v is not None else ""), quote=True)
     sections_html = ""
     for sec in sections_list:
-        sec_num = sec.get("number", "")
-        sec_title = sec.get("title", "")
-        sec_content = sec.get("content", "").replace('\n\n', '</p><p class="judicial-para">')
+        sec_num = esc(sec.get("number", ""))
+        sec_title = esc(sec.get("title", ""))
+        sec_content = esc(sec.get("content", "")).replace('\n\n', '</p><p class="judicial-para">')
         sections_html += f"""
         <div class="judgment-section">
             <h3 class="section-heading">{sec_num}. {sec_title.upper()}</h3>
@@ -313,7 +316,15 @@ def render_printable_html(draft_data: Dict[str, Any]) -> str:
         """
         
     hash_val = generate_judgment_hash(case_no, title, json.dumps(content_json))
-    coram_html_str = (draft_data.get('reviewed_by') or "HON'BLE PRESIDING BENCH").upper()
+    coram_html_str = esc((draft_data.get('reviewed_by') or "HON'BLE PRESIDING BENCH").upper())
+    # Every interpolated value is HTML-escaped (stored drafts are user-authored).
+    case_no_raw = str(case_no)
+    case_no_css = re.sub(r'[^A-Za-z0-9 ./()-]', '', case_no_raw)
+    case_no, court_header_str, pet, resp, pet_label, resp_label = (
+        esc(v) for v in (case_no, court_header_str, pet, resp, pet_label, resp_label))
+    court_raw_html = esc(str(court_raw).upper())
+    hash_val = esc(hash_val)
+    citation_tail = esc(case_no_raw[-6:].replace('/', ''))
     
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -325,7 +336,7 @@ def render_printable_html(draft_data: Dict[str, Any]) -> str:
     size: A4;
     margin: 25mm 20mm 25mm 30mm;
     @top-right {{
-        content: "{case_no}";
+        content: "{case_no_css}";
         font-family: "Times New Roman", serif;
         font-size: 9pt;
         color: #666;
@@ -481,7 +492,7 @@ body {{
 <div class="signature-box">
     Sd/-<br>
     ({coram_html_str})<br>
-    {court_raw.upper()}<br>
+    {court_raw_html}<br>
     <span style="font-size: 9.5pt; font-weight: normal; color: #555;">Pronounced on {datetime.now().strftime('%d %B %Y')}</span>
 </div>
 
@@ -490,7 +501,7 @@ body {{
     System: Gyanam AI — NLU Jodhpur Edition (Powered by Kelyvo)<br>
     SHA-256 Hash: {hash_val}<br>
     DPDP Act 2023 Anonymization Token: DPDP-NLUJ-{hash_val[:12].upper()}<br>
-    SCitation Universal Canonical Citation: 2026 (NLUJ-SCIT) {case_no[-6:].replace('/', '')}<br>
+    SCitation Universal Canonical Citation: 2026 (NLUJ-SCIT) {citation_tail}<br>
     Compliance: Section 65B Indian Evidence Act / Section 63 Bharatiya Sakshya Adhiniyam, 2023
 </div>
 

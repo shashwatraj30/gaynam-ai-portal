@@ -10,7 +10,8 @@ export const SECTION_KEYS = [
   'section_14_conclusion_disposition', 'section_15_citations_authorities',
 ];
 
-export const PARAM_KEYS = ['case_title', 'case_number', 'court', 'facts', 'issues', 'petitioner_arguments', 'respondent_arguments', 'statutory_provisions'];
+export const PARAM_KEYS = ['case_title', 'case_number', 'court', 'facts', 'issues', 'petitioner_arguments', 'respondent_arguments', 'statutory_provisions',
+  'petitioner', 'respondent', 'prayer', 'outcome'];
 export const REQUIRED_PARAMS = ['case_title', 'case_number', 'court', 'facts', 'issues'];
 
 /** Server-aligned transitions (backend ALLOWED_TRANSITIONS). RETURNED only goes back to DRAFT. */
@@ -116,6 +117,8 @@ const ALIASES = {
   petitioner_arguments: ['petitioner_arguments', 'petitionerArguments', 'petitioner_args'],
   respondent_arguments: ['respondent_arguments', 'respondentArguments', 'respondent_args'],
   statutory_provisions: ['statutory_provisions', 'statutoryProvisions', 'statutes'],
+  petitioner: ['petitioner', 'petitioner_name', 'petitionerName'], respondent: ['respondent', 'respondent_name', 'respondentName'],
+  prayer: ['prayer', 'reliefs', 'relief_sought'], outcome: ['outcome'],
 };
 export function normalizeIntake(src) {
   const p = emptyParams();
@@ -131,6 +134,42 @@ export function normalizeIntake(src) {
   return p;
 }
 export function paramsFromDraft(d) { const p = emptyParams(); PARAM_KEYS.forEach((k) => { p[k] = d?.[k] == null ? '' : String(d[k]); }); return p; }
+
+// ---------- hand-off extras (document id, pinned authorities) ----------
+export function squashCite(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ''); }
+export function normalizeAuthorities(raw) {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set(); const out = [];
+  for (const a of raw) {
+    if (!a || typeof a !== 'object') continue;
+    const x = { id: a.id ?? null, title: String(a.title || a.case_title || ''), citation: String(a.citation || ''), court: String(a.court || ''), status: String(a.status || a.precedent_status || '') };
+    if (!x.title && !x.citation) continue;
+    const key = squashCite(x.citation) || x.title.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key); out.push(x);
+  }
+  return out;
+}
+export function normalizeExtra(src) {
+  const e = src && typeof src === 'object' ? src : {};
+  const docId = e.document_id ?? e.documentId ?? null;
+  return { document_id: docId === '' ? null : docId, authorities: normalizeAuthorities(e.authorities ?? e.pinned_authorities) };
+}
+export function extraFromDraft(d) {
+  const c = d?.draft_content_json && typeof d.draft_content_json === 'object' ? d.draft_content_json : {};
+  return normalizeExtra({ document_id: d?.document_id ?? c.document_id, authorities: d?.authorities ?? c.pinned_authorities });
+}
+
+// ---------- outcome ----------
+export const OUTCOME_VALUES = ['', 'Allowed', 'Dismissed', 'Partly allowed', 'Disposed of', 'Remanded'];
+export const OUTCOME_OTHER = '__other';
+/** outcome string -> {choice, text} for the select + free-text control. */
+export function outcomeParts(outcome) {
+  const v = String(outcome || '').trim();
+  if (OUTCOME_VALUES.includes(v)) return { choice: v, text: '' };
+  return { choice: OUTCOME_OTHER, text: v };
+}
+export function outcomeFromParts(choice, text) { return choice === OUTCOME_OTHER ? String(text || '').trim() : String(choice || ''); }
 export function missingParams(params) { return REQUIRED_PARAMS.filter((k) => !String(params?.[k] || '').trim()); }
 export function parseIssues(text) {
   return String(text || '').split(/\r?\n/).map((l) => l.replace(/^\s*\((?:[A-Za-z]|[ivxIVX]+)\)\s*/, '').replace(/^\s*(?:issue\s*)?\(?\d+[.)]?\s*[:\-]?\s*/i, '').replace(/^\s*[-*•]\s*/, '').trim()).filter(Boolean);
@@ -151,15 +190,19 @@ export function alertMarks(target, draftId, texts) {
   });
   return { target, sections };
 }
-export function buildDraftRequest(params) {
+export function buildDraftRequest(params, extra) {
   const b = {}; PARAM_KEYS.forEach((k) => { b[k] = String(params?.[k] ?? ''); });
   b.gemini_api_key = null;
+  const e = normalizeExtra(extra);
+  if (e.document_id != null) b.document_id = e.document_id;
+  if (e.authorities.length) b.authorities = e.authorities;
   return b;
 }
-export function buildSavePayload({ id, version, status, params, content, texts }) {
+export function buildSavePayload({ id, version, status, params, content, texts, extra }) {
+  const e = normalizeExtra(extra);
   const payload = {
-    draft_id: id || null, ...buildDraftRequest(params),
-    draft_content_json: { ...(content || {}), sections: sectionsToObject(texts) },
+    draft_id: id || null, ...buildDraftRequest(params, e),
+    draft_content_json: { ...(content || {}), sections: sectionsToObject(texts), ...(e.authorities.length ? { pinned_authorities: e.authorities } : {}), ...(e.document_id != null ? { document_id: e.document_id } : {}) },
     status: status || 'DRAFT',
   };
   delete payload.gemini_api_key;
@@ -192,6 +235,13 @@ export function citationChecks(v) {
     overruledBy: v?.case_data?.overruled_by || '',
     judgmentId: v?.case_data?.id ?? null,
   };
+}
+/** 'support' row: the citation is among the retrieved/pinned authorities AND verified in the corpus. */
+export function supportCheck(v, authorities) {
+  if (citationChecks(v).found !== 'pass') return 'unchecked';
+  const c = squashCite(v?.citation || v?.query_citation);
+  const among = c.length >= 4 && (authorities || []).some((a) => squashCite(a.citation) === c);
+  return among ? 'pass' : 'fail';
 }
 export function summarizeVerification(results) {
   const rows = (results || []).map((v) => ({ v, c: citationChecks(v) }));
@@ -231,3 +281,92 @@ export function createAutosaver({ save, delay = 1500, onState = () => {}, setTim
     clearDirty() { dirty = false; clear(); },
   };
 }
+
+// ---------- precedents / authorities ----------
+/** "Title, Citation (Court)" */
+export function formatPrecedent(p) {
+  const title = String(p?.title || p?.case_title || '').trim(); const cite = String(p?.citation || '').trim(); const court = String(p?.court || '').trim();
+  let out = [title, cite].filter(Boolean).join(', ');
+  if (court) out += out ? ` (${court})` : court;
+  return out;
+}
+/** Append the formatted precedent as a new line. -> {text, added}. Not added twice. */
+export function insertPrecedentText(current, p) {
+  const line = formatPrecedent(p);
+  const cur = String(current || '');
+  if (!line || cur.includes(line)) return { text: cur, added: false };
+  const cite = squashCite(p.citation);
+  if (cite.length >= 4 && squashCite(cur).includes(cite)) return { text: cur, added: false };
+  return { text: cur.trim() ? `${cur.replace(/\s+$/, '')}\n${line}` : line, added: true };
+}
+/** Pinned authorities not yet mentioned in section 15 text. */
+export function missingAuthorities(text, authorities) {
+  const sq = squashCite(text); const low = String(text || '').toLowerCase();
+  return (authorities || []).filter((a) => {
+    const c = squashCite(a.citation);
+    if (c.length >= 4) return !sq.includes(c);
+    return a.title ? !low.includes(a.title.toLowerCase()) : false;
+  });
+}
+export function addAuthoritiesText(text, authorities) {
+  let cur = String(text || ''); let added = 0;
+  for (const a of missingAuthorities(cur, authorities)) { const r = insertPrecedentText(cur, a); if (r.added) { cur = r.text; added++; } }
+  return { text: cur, added };
+}
+
+// ---------- per-section regenerate / reject ----------
+/** Request for regenerating only section n (1..15); `current` holds all texts so the model keeps context. */
+export function buildRegenerateRequest(params, extra, n, texts) {
+  return { ...buildDraftRequest(params, extra), sections: [n], current: sectionsToObject(texts) };
+}
+/** res = draftJudgment response -> {texts (only section n replaced), text, found}. */
+export function mergeRegenerated(texts, res, n) {
+  const key = SECTION_KEYS[n - 1];
+  const raw = res?.sections;
+  let v;
+  if (Array.isArray(raw)) { const hit = raw.find((s) => s?.key === key || Number(s?.number) === n); v = hit ? (hit.content ?? hit.text) : undefined; }
+  else if (raw && typeof raw === 'object') v = raw[key] ?? raw[String(n)];
+  if (v === undefined) return { texts: { ...texts }, text: texts?.[key] || '', found: false };
+  const text = sectionToText(v);
+  return { texts: { ...texts, [key]: text }, text, found: true };
+}
+/** In-memory per-section undo stack of replaced texts. */
+export function createUndoStack(limit = 10) {
+  const m = new Map();
+  return {
+    push(key, text) { const a = m.get(key) || []; a.push(String(text ?? '')); if (a.length > limit) a.shift(); m.set(key, a); },
+    pop(key) { const a = m.get(key); return a && a.length ? a.pop() : undefined; },
+    peek(key) { const a = m.get(key); return a && a.length ? a[a.length - 1] : undefined; },
+    size(key) { return (m.get(key) || []).length; },
+    clear() { m.clear(); },
+  };
+}
+/** Where Reject goes: the text before the last regenerate, else the last saved version's text. */
+export function rejectTarget(stack, key, savedTexts, current) {
+  const u = stack.peek(key);
+  if (u !== undefined) return { source: 'undo', text: u };
+  if (savedTexts && savedTexts[key] !== undefined && savedTexts[key] !== current) return { source: 'saved', text: savedTexts[key] };
+  return { source: null, text: current };
+}
+export function canSectionAction({ status, canDraft }) { return isEditableStatus(status) && canDraft !== false; }
+
+// ---------- return reason ----------
+export const MIN_REASON = 5;
+export function validateReason(s) {
+  const reason = String(s || '').trim();
+  return reason.length >= MIN_REASON ? { ok: true, reason } : { ok: false, reason, error: 'REASON_REQUIRED' };
+}
+export function isReasonRequired(err) { return !!err && err.status === 422 && (err.code === 'REASON_REQUIRED' || /reason/i.test(String(err.message || ''))); }
+/** Banner text source: shown when the draft was returned (status RETURNED, or DRAFT after the return). */
+export function returnReasonFor(d) {
+  const r = String(d?.last_return_reason || '').trim();
+  const st = String(d?.status || '').toUpperCase();
+  return r && (st === 'RETURNED' || st === 'DRAFT') ? r : '';
+}
+
+// ---------- version compare ----------
+export function toggleCompare(selected, n, max = 2) {
+  const a = selected.includes(n) ? selected.filter((x) => x !== n) : [...selected, n];
+  return a.length > max ? a.slice(a.length - max) : a;
+}
+export function orderPair(sel) { return [...sel].sort((x, y) => x - y); }

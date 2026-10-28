@@ -14,13 +14,26 @@ export function filterCommands(commands = [], query = '') {
     return terms.every((t) => hay.includes(t));
   });
 }
+// Pure: commands built from the typed text (permission-aware). `go(hash)` navigates; `tr(key, vars)` translates.
+// Returns [] for empty input.
+export function dynamicCommands(query, { can = () => false, tr = (k) => k, go = () => {} } = {}) {
+  const q = String(query || '').trim();
+  if (!q) return [];
+  const enc = encodeURIComponent(q);
+  const defs = [
+    ['dyn-search', 'cmd.searchFor', `#/research?q=${enc}`, can('SEARCH')],
+    ['dyn-check', 'cmd.checkCitation', `#/judgments/check?c=${enc}`, can('VERIFY_CITATION') || can('SEARCH')],
+    ['dyn-docs', 'cmd.openDocs', `#/documents?q=${enc}`, can('UPLOAD_PLEADING') || can('DRAFT_FULL')],
+  ];
+  return defs.filter((d) => d[3]).map(([id, key, href]) => ({ id, label: tr(key, { q }), group: 'Search', href, dynamic: true, run: () => go(href) }));
+}
 // Pure: next active index with wrap-around.
 export function moveIndex(index, delta, length) {
   if (!length) return -1;
   return (index + delta + length) % length;
 }
 
-export function searchPalette({ commands: initial = [], placeholder = 'Type a command or search' } = {}) {
+export function searchPalette({ commands: initial = [], placeholder = 'Type a command or search', dynamic = null } = {}) {
   const listId = uid('pal-list');
   let commands = initial.slice();
   let results = commands.slice();
@@ -52,7 +65,8 @@ export function searchPalette({ commands: initial = [], placeholder = 'Type a co
     dlg.close();
     if (c.run) c.run();
   }
-  input.addEventListener('input', () => { results = filterCommands(commands, input.value); active = 0; paint(); });
+  const compute = (q) => [...(typeof dynamic === 'function' ? dynamic(q) : []), ...filterCommands(commands, q)];
+  input.addEventListener('input', () => { results = compute(input.value); active = 0; paint(); });
   input.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); active = moveIndex(active, 1, results.length); paint(); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); active = moveIndex(active, -1, results.length); paint(); }
@@ -69,7 +83,7 @@ export function searchPalette({ commands: initial = [], placeholder = 'Type a co
     // Replace the command list (e.g. when the sidebar is rebuilt); keeps the current query if open.
     setCommands(next = []) {
       commands = Array.from(next);
-      results = filterCommands(commands, input.value); active = 0;
+      results = compute(input.value); active = 0;
       if (dlg.isOpen) paint();
     },
     toggle() { if (dlg.isOpen) dlg.close(); else api.open(); },

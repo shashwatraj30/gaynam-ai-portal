@@ -26,4 +26,10 @@ export default {
   'notfound.body': 'पता गलत लिखा गया हो सकता है या पृष्ठ हट गया हो सकता है।',
   'system.goHome': 'होम पर जाएँ',
   'system.goBack': 'वापस जाएँ',
+  'settings.theme': 'थीम',
+  'settings.theme.label': 'रंग थीम',
+  'settings.theme.system': 'सिस्टम',
+  'settings.theme.light': 'हल्की',
+  'settings.theme.dark': 'गहरी',
+  'settings.theme.hint': 'सिस्टम आपके डिवाइस की सेटिंग का पालन करता है।',
 };

@@ -25,3 +25,17 @@
 .g-graph__kind { font: 600 var(--fs-body)/var(--lh-body) var(--font-sans); margin: 0; }
 .g-graph__warn { color: var(--danger); font-weight: 600; margin: 0; }
 .g-graph__side { min-width: 0; }
+.g-graph__find { display: flex; flex-wrap: wrap; gap: var(--s3); align-items: flex-end; }
+.g-graph__find .g-field { flex: 1 1 260px; min-width: 0; }
+.g-graph__hits { margin-top: var(--s3); }
+.g-graph__streams { margin: var(--s3) 0; overflow-x: auto; }
+.g-graph__nodes { list-style: none; margin: var(--s3) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--s3); }
+.g-graph__node-li { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); padding: var(--s4); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); }
+.g-graph__node-li--bad { border-color: var(--danger); background: var(--danger-tint); }
+.g-graph__ndl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--s1) var(--s3); margin: 0; flex: 1 1 100%; }
+.g-graph__ndl dt { color: var(--ink-2); font: 600 var(--fs-ui)/var(--lh-ui) var(--font-sans); }
+.g-graph__ndl dd { margin: 0; font: 400 var(--fs-body)/var(--lh-body) var(--font-serif); }
+.g-graph__treat { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--s2); margin: var(--s2) 0 0; padding: 0; list-style: none; }
+.g-graph__treat li { display: flex; justify-content: space-between; gap: var(--s2); }
+@media (max-width: 1180px) { .g-graph__lineages { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 480px) { .g-graph__node-li { padding: var(--s3); } .g-graph__ndl { grid-template-columns: minmax(0, 1fr); } .g-graph__lacts .g-btn { min-height: 44px; } }

@@ -42,6 +42,13 @@ def routes(ids):
         ("matters", "/matters", DRAFTERS),
         ("matter", f"/matters/{ids['matter']}", DRAFTERS),
         ("intake", "/matters/new", DRAFTERS),
+        # v3 Documents (docs/API_V3_CONTRACT.md): the list page needs no fixture id. The detail page
+        # (/documents/:id) is NOT added here: document ids are uuid4 hex strings created at upload time,
+        # and tests/build_fixture.py seeds no document row, so there is no deterministic id to parametrize
+        # at collection time the way judgment/draft/matter are. It is covered end to end instead by
+        # tests/e2e/test_documents_journey.py, which uploads a real document first. See docs/wiring/qa1.md
+        # for the exact patch to add a fixture document + a "document" route here, if wanted later.
+        ("documents", "/documents", DRAFTERS),
         ("drafts", "/drafts", DRAFTERS),
         ("studio", f"/drafts/{ids['draft']}", DRAFTERS),
         ("review", f"/drafts/{ids['review_draft']}/review", DRAFTERS),

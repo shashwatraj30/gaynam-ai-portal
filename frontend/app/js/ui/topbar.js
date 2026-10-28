@@ -8,7 +8,8 @@ import { api } from '../api.js';
 import { formatRelative } from '../format.js';
 import { canPreview } from './role-preview-logic.js';
 import { buildPreviewPicker } from './role-preview.js';
-import { loadFontSize, saveFontSize, applyFontSize, stepFontSize, FONT_SIZES } from '../pages/lib/settings-logic.js';
+import { isSimulatedSync } from '../pages/lib/home-logic.js';
+import { loadFontSize, saveFontSize, applyFontSize, stepFontSize, FONT_SIZES, loadTheme, saveTheme, applyTheme } from '../pages/lib/settings-logic.js';
 
 function initials(name) {
   const parts = String(name || '?').replace(/^(Hon'ble|Justice|Dr\.?|Prof\.?)\s+/i, '').split(/\s+/).filter(Boolean);
@@ -52,9 +53,10 @@ export function buildTopbar({ user, can, onMenu, onOpenPalette, onSignOut, onToa
   if (syncBtn) fresh.append(syncBtn);
   async function refreshFreshness() {
     try {
-      const s = await api.sync.status();
+      const s = await api.sync.status({ noRedirect: true });
       const ts = s?.sync_state?.last_sync_timestamp || s?.last_sync_timestamp;
-      if (ts) { freshText.textContent = t('top.synced', { when: formatRelative(ts) }); fresh.dataset.state = 'ok'; }
+      const sim = isSimulatedSync(s);
+      if (ts) { freshText.textContent = t(sim ? 'top.syncedSim' : 'top.synced', { when: formatRelative(ts) }); fresh.dataset.state = 'ok'; }
       else { freshText.textContent = t('top.syncUnknown'); fresh.dataset.state = 'unknown'; }
     } catch { freshText.textContent = t('top.syncUnknown'); fresh.dataset.state = 'unknown'; }
   }
@@ -81,6 +83,23 @@ export function buildTopbar({ user, can, onMenu, onOpenPalette, onSignOut, onToa
   syncSize(loadFontSize());
   if (typeof window !== 'undefined') window.addEventListener('gyanam:fontsize', (e) => syncSize(e.detail));
 
+  // ---- theme toggle (light/dark; 'system' default is still reachable from Settings) ----
+  function resolvedTheme() {
+    const v = loadTheme();
+    if (v !== 'system') return v;
+    return (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+  const themeBtn = h('button', { type: 'button', class: 'g-topbtn g-topbtn--icon', onClick: toggleTheme });
+  function syncThemeBtn() {
+    const r = resolvedTheme();
+    const stored = loadTheme();
+    const label = t(`top.theme.${stored}`);
+    themeBtn.title = label; themeBtn.setAttribute('aria-label', label);
+    themeBtn.replaceChildren(icon(r === 'dark' ? 'sun' : 'moon', 18));
+  }
+  function toggleTheme() { applyTheme(saveTheme(resolvedTheme() === 'dark' ? 'light' : 'dark')); syncThemeBtn(); }
+  syncThemeBtn();
+
   // ---- preview as role (admin only, display only) ----
   const picker = preview && canPreview(user) ? buildPreviewPicker(preview) : null;
 
@@ -90,9 +109,11 @@ export function buildTopbar({ user, can, onMenu, onOpenPalette, onSignOut, onToa
   const menu = h('div', { class: 'g-usermenu__panel', role: 'menu', hidden: true },
     h('div', { class: 'g-usermenu__who' }, h('strong', {}, name), h('span', { class: 'g-meta' }, roleLabel)),
     h('a', { class: 'g-usermenu__item', role: 'menuitem', href: '#/settings' }, icon('settings', 16), t('top.settings')),
+    h('button', { class: 'g-usermenu__item', role: 'menuitem', type: 'button', onClick: () => { close(); onSignOut && onSignOut(); if (typeof location !== 'undefined') location.hash = '#/signin'; } }, icon('users', 16), t('top.switchProfile')),
     h('button', { class: 'g-usermenu__item', role: 'menuitem', type: 'button', onClick: () => { close(); onSignOut && onSignOut(); } }, icon('x', 16), t('top.signOut')));
   const trigger = h('button', { class: 'g-avatar', type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': `${t('top.userMenu')}: ${name}`, onClick: toggle }, initials(name));
-  const userMenu = h('div', { class: 'g-usermenu' }, trigger, menu);
+  const who = name ? h('div', { class: 'g-whoami' }, h('span', { class: 'g-whoami__name' }, name), h('span', { class: 'g-whoami__role' }, roleLabel)) : null;
+  const userMenu = h('div', { class: 'g-usermenu' }, who, trigger, menu);
   function open() { menu.hidden = false; trigger.setAttribute('aria-expanded', 'true'); menu.querySelector('a,button')?.focus(); }
   function close() { menu.hidden = true; trigger.setAttribute('aria-expanded', 'false'); }
   function toggle() { menu.hidden ? open() : close(); }
@@ -102,6 +123,6 @@ export function buildTopbar({ user, can, onMenu, onOpenPalette, onSignOut, onToa
   const menuBtn = h('button', { class: 'g-topbtn g-topbtn--icon g-menu-btn', type: 'button', 'aria-label': t('nav.open'), 'aria-controls': 'g-sidebar', onClick: () => onMenu && onMenu() }, icon('menu', 20));
 
   const el = h('header', { class: 'g-topbar' },
-    menuBtn, crumbs, historyBtn, h('span', { class: 'g-grow' }), paletteBtn, fresh, picker?.el, fontsize, lang, userMenu);
+    menuBtn, crumbs, historyBtn, h('span', { class: 'g-grow' }), paletteBtn, fresh, picker?.el, fontsize, themeBtn, lang, userMenu);
   return { el, setBreadcrumb, setHistoryHandler, refreshFreshness, menuBtn, focusPreview: () => picker?.focus() };
 }

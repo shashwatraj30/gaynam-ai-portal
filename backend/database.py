@@ -135,7 +135,7 @@ def init_db():
     """)
 
     conn.commit()
-    migrate_draft_columns(conn)
+    run_migrations(conn)
     conn.close()
 
 def migrate_draft_columns(conn):
@@ -163,6 +163,195 @@ def migrate_draft_columns(conn):
         conn.commit()
     except Exception as e:
         print(f"Draft migration warning: {e}")
+
+
+# ---------------------------------------------------------------- versioned migrations
+# Each migration is idempotent (IF NOT EXISTS / column checks) and recorded in schema_migrations,
+# so running it on an existing database (including the 329 MB corpus DB) only adds what is missing.
+
+def _columns(conn, table):
+    return {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def _add_column(conn, table, column, decl):
+    cols = _columns(conn, table)
+    if cols and column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
+def _m002_documents(conn):
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS documents (
+        id TEXT PRIMARY KEY,
+        matter_key TEXT,
+        doc_type TEXT NOT NULL DEFAULT 'OTHER',
+        title TEXT NOT NULL,
+        original_name TEXT,
+        stored_name TEXT,
+        mime TEXT,
+        size INTEGER DEFAULT 0,
+        sha256 TEXT,
+        source TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'READ',
+        chars INTEGER DEFAULT 0,
+        pages INTEGER,
+        redactions_json TEXT,
+        uploaded_by TEXT,
+        uploaded_role TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_documents_matter ON documents(matter_key);
+    CREATE INDEX IF NOT EXISTS idx_documents_created ON documents(created_at);
+    CREATE TABLE IF NOT EXISTS document_text (
+        document_id TEXT PRIMARY KEY,
+        text_redacted TEXT NOT NULL DEFAULT ''
+    );
+    CREATE TABLE IF NOT EXISTS document_extractions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        document_id TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        fields_json TEXT NOT NULL,
+        issues_json TEXT NOT NULL,
+        authorities_json TEXT,
+        confirmed INTEGER NOT NULL DEFAULT 0,
+        saved_by TEXT,
+        saved_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_doc_extr ON document_extractions(document_id, version);
+    CREATE TABLE IF NOT EXISTS document_pins (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        document_id TEXT NOT NULL,
+        judgment_id INTEGER NOT NULL,
+        issue_ref TEXT,
+        note TEXT,
+        added_by TEXT,
+        added_at TEXT NOT NULL,
+        UNIQUE(document_id, judgment_id)
+    );
+    """)
+    _add_column(conn, "draft_judgments", "document_id", "TEXT")
+
+
+def _m003_saved_searches(conn):
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS saved_searches (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        query TEXT NOT NULL,
+        filters_json TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_saved_searches_user ON saved_searches(user_id);
+    """)
+
+
+def _m004_user_status(conn):
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS user_status (
+        user_id TEXT PRIMARY KEY,
+        active INTEGER NOT NULL DEFAULT 1,
+        changed_by TEXT,
+        changed_at TEXT NOT NULL
+    );
+    """)
+
+
+def _m005_draft_version_note(conn):
+    _add_column(conn, "draft_versions", "note", "TEXT")
+
+
+def _m006_paragraphs_treatments(conn):
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS judgment_paragraphs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        judgment_id INTEGER NOT NULL,
+        para_no INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        page INTEGER,
+        UNIQUE(judgment_id, para_no)
+    );
+    CREATE TABLE IF NOT EXISTS judgment_treatments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        citing_id INTEGER NOT NULL,
+        cited_id INTEGER NOT NULL,
+        treatment TEXT NOT NULL,
+        para_no INTEGER,
+        source_ref TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_treat_cited ON judgment_treatments(cited_id);
+    CREATE INDEX IF NOT EXISTS idx_treat_citing ON judgment_treatments(citing_id);
+    """)
+
+
+def _m007_lineages(conn):
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS lineage_streams (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        subtitle TEXT,
+        sort_order INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS lineage_nodes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        stream_id TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        judgment_id INTEGER,
+        year INTEGER,
+        title TEXT NOT NULL,
+        citation TEXT,
+        holding TEXT,
+        coram TEXT,
+        bench TEXT,
+        impact TEXT,
+        overruled INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_lineage_nodes_stream ON lineage_nodes(stream_id, sort_order);
+    """)
+
+
+def _m008_audit_indexes(conn):
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_logs(timestamp)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action)")
+
+
+MIGRATIONS = [
+    ("001_draft_columns", migrate_draft_columns),
+    ("002_documents", _m002_documents),
+    ("003_saved_searches", _m003_saved_searches),
+    ("004_user_status", _m004_user_status),
+    ("005_draft_version_note", _m005_draft_version_note),
+    ("006_paragraphs_treatments", _m006_paragraphs_treatments),
+    ("007_lineages", _m007_lineages),
+    ("008_audit_indexes", _m008_audit_indexes),
+]
+
+
+def run_migrations(conn=None):
+    """Apply every migration not yet recorded in schema_migrations. Returns the names applied."""
+    own = conn is None
+    if own:
+        conn = get_connection()
+    applied = []
+    try:
+        conn.execute("CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)")
+        done = {r[0] for r in conn.execute("SELECT name FROM schema_migrations").fetchall()}
+        from datetime import datetime, timezone
+        for name, fn in MIGRATIONS:
+            if name in done:
+                continue
+            fn(conn)
+            conn.execute("INSERT OR IGNORE INTO schema_migrations(name, applied_at) VALUES (?, ?)",
+                         (name, datetime.now(timezone.utc).isoformat()))
+            conn.commit()
+            applied.append(name)
+    finally:
+        if own:
+            conn.close()
+    return applied
+
 
 if __name__ == "__main__":
     init_db()

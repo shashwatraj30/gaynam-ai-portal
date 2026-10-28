@@ -1,9 +1,8 @@
 // Pure logic for the New matter (intake) flow (no DOM access; unit-tested in tests/intake.test.js).
-// Backend facts (plan section 6, B6): /api/ocr/process_brief returns {success, source, metadata{...}, dpdp_redactions_applied,
-// cleaned_character_count, sanitized_text_preview, file_format}. `source` is digital_text | ocr | vlm | canned_sample | fallback.
-// /api/upload_pleading returns {parsed{...}} and fills parser defaults when it finds nothing; those are blanked here (P9).
+// Every read document is a server Document (api.documents.create, docs/API_V3_CONTRACT.md).
+// `source` is digital | ocr | vlm | pasted | sample | failed. Empty strings mean "not found in the document".
 
-export const SAMPLE_SOURCES = ['canned_sample', 'fallback'];
+export const SAMPLE_SOURCES = ['sample'];
 export function isSampleSource(source) { return SAMPLE_SOURCES.includes(String(source || '')); }
 
 export const ALLOWED_EXT = ['pdf', 'docx', 'doc', 'txt', 'md', 'rtf', 'jpg', 'jpeg', 'png', 'webp', 'tif', 'tiff', 'bmp'];
@@ -40,63 +39,65 @@ export function uploadErrorKey(err) {
 }
 
 // ---- fields ----
-export const FIELD_KEYS = ['court', 'case_number', 'case_title', 'petitioner', 'respondent', 'statutory_provisions', 'facts', 'prayer'];
+export const FIELD_KEYS = ['court', 'case_number', 'case_title', 'petitioner', 'respondent', 'statutory_provisions', 'facts', 'prayer',
+  'petitioner_arguments', 'respondent_arguments'];
 const s = (v) => (v == null ? '' : String(v).trim());
 
-/** Normalise /api/ocr/process_brief into {fields, issues, source, isSample, redactions, chars, format, vlm, text}. */
-export function normalizeBrief(resp) {
-  const md = (resp && resp.metadata) || {};
-  const source = s(resp && resp.source) || (resp && resp.vlm_transcription_used ? 'vlm' : 'ocr');
-  return {
-    source,
-    isSample: isSampleSource(source),
-    fields: {
-      court: s(md.court), case_number: s(md.case_number), case_title: s(md.case_title),
-      petitioner: s(md.petitioner), respondent: s(md.respondent),
-      statutory_provisions: s(md.statutory_provisions), facts: s(md.facts_summary || md.facts), prayer: s(md.prayer_relief),
-    },
-    issues: s(md.grounds_of_challenge || md.issues),
-    redactions: Number(resp && resp.dpdp_redactions_applied) || 0,
-    chars: Number(resp && resp.cleaned_character_count) || 0,
-    format: s(resp && resp.file_format),
-    vlm: !!(resp && resp.vlm_transcription_used),
-    blanked: 0,
-  };
-}
-
-// Defaults the legacy pleading parser writes when it finds nothing. They are not read from the user's text.
-export const PARSER_DEFAULTS = {
-  case_title: ['Petitioner v. Respondent'],
-  case_number: ['W.P. No. 1024/2023'],
-  statutory_provisions: ['Constitution of India, Article 226'],
-};
-const DEFAULT_ISSUE_RE = /^\(A\) Whether the impugned order violates the principles of natural justice\?\n\(B\) Whether the proceedings conform to the statutory mandate under /;
-
-/** Normalise /api/upload_pleading ({parsed}) for pasted text. Parser defaults are blanked and counted. */
-export function normalizePleading(resp, redactions = 0) {
-  const p = (resp && resp.parsed) || {};
-  let blanked = 0;
-  const take = (key, raw) => {
-    const v = s(raw);
-    if (PARSER_DEFAULTS[key] && PARSER_DEFAULTS[key].includes(v)) { blanked += 1; return ''; }
-    return v;
-  };
-  let issues = s(p.issues);
-  if (DEFAULT_ISSUE_RE.test(issues)) { issues = ''; blanked += 1; }
-  return {
-    source: 'pasted_text', isSample: false,
-    fields: {
-      court: s(p.court), case_number: take('case_number', p.case_number), case_title: take('case_title', p.case_title),
-      petitioner: '', respondent: '',
-      statutory_provisions: take('statutory_provisions', p.statutory_provisions), facts: s(p.facts), prayer: '',
-    },
-    issues, blanked, redactions: Number(redactions) || 0, chars: Number(p.raw_text_length) || 0, format: 'TXT', vlm: false,
-  };
-}
+export const DOC_TYPES = ['PETITION', 'FIR', 'PLAINT', 'WRITTEN_STATEMENT', 'COUNTER_AFFIDAVIT', 'REJOINDER', 'APPEAL', 'APPLICATION',
+  'EVIDENCE_SUMMARY', 'PREVIOUS_ORDER', 'SUBMISSIONS', 'OTHER'];
+export const FIR_SAMPLES = ['fir_04_17', 'fir_06_17'];
+/** Default document type: FIR for the FIR samples, PETITION otherwise. */
+export function defaultDocType(sample) { return FIR_SAMPLES.includes(sample) ? 'FIR' : 'PETITION'; }
+export function validDocType(v) { return DOC_TYPES.includes(v) ? v : 'PETITION'; }
 
 export function parseIssues(text) {
   return String(text || '').split(/\n+/)
     .map((l) => l.replace(/^\s*(?:\(?[A-Za-z0-9]{1,2}[.)]\s+|[-*•]\s+)/, '').trim()).filter(Boolean);
+}
+
+/** Map a server Document into the step state. */
+export function normalizeDocument(doc) {
+  const d = doc || {};
+  const ex = d.extraction || {};
+  const f = ex.fields || {};
+  const fields = {};
+  FIELD_KEYS.forEach((k) => { fields[k] = s(f[k]); });
+  const source = s(d.source) || 'failed';
+  const total = Number(d.redaction_total);
+  const red = Array.isArray(d.redactions) ? d.redactions.reduce((n, r) => n + (Number(r && r.count) || 0), 0) : 0;
+  return {
+    id: d.id == null ? '' : d.id,
+    docType: s(d.doc_type),
+    source,
+    isSample: isSampleSource(source),
+    failed: source === 'failed',
+    fields,
+    issues: (Array.isArray(ex.issues) ? ex.issues : []).map(s).filter(Boolean).join('\n'),
+    version: Number(ex.version) || 1,
+    confirmed: !!ex.confirmed,
+    authorities: Array.isArray(ex.authorities) ? ex.authorities : [],
+    redactions: Number.isFinite(total) && total > 0 ? total : red,
+    chars: Number(d.chars) || 0,
+    format: s(d.mime || d.original_name),
+    vlm: source === 'vlm',
+    blanked: 0,
+    title: s(d.title || d.original_name),
+  };
+}
+
+/** Body for api.documents.saveExtraction. */
+export function extractionBody(fields, issues, version) {
+  const out = {};
+  FIELD_KEYS.forEach((k) => { out[k] = s(fields && fields[k]); });
+  return { fields: out, issues: parseIssues(issues), version };
+}
+/** 409 VERSION_CONFLICT (a newer version exists on the server). */
+export function isConflict(err) { return !!err && err.status === 409; }
+/** Message key for save/confirm failures (null = say nothing, e.g. cancelled). */
+export function saveErrorKey(err) {
+  if (isConflict(err)) return (err.code === 'NOT_CONFIRMED' || err.code === 'EXTRACTION_INCOMPLETE') ? 'intake.err.incomplete' : 'intake.err.conflict';
+  if (err && err.status === 422) return 'intake.err.incomplete';
+  return uploadErrorKey(err);
 }
 
 /** Step 2 validation: required fields. Returns {fieldKey: i18nKey}. */
@@ -107,17 +108,14 @@ export function validateFields(fields) {
   return err;
 }
 
-/**
- * Sample gate (plan P4): canned or fallback text cannot proceed until at least one field was edited
- * or the user confirms "use as sample". Real sources always pass.
- */
+/** Sample gate: only applies when the server says source is "sample". Real sources always pass. */
 export function canProceed({ isSample, edited, acknowledged }) {
   if (!isSample) return true;
   return !!(edited || acknowledged);
 }
 
 /** The hand-off object stored under store key "intakeParams" for the Studio (/drafts/new). */
-export function buildIntakeParams({ fields, issues, source, isSample, redactions, filename }) {
+export function buildIntakeParams({ fields, issues, source, isSample, redactions, filename, documentId, authorities }) {
   const parties = [s(fields.petitioner), s(fields.respondent)].filter(Boolean);
   return {
     case_title: s(fields.case_title) || parties.join(' v. '),
@@ -126,23 +124,36 @@ export function buildIntakeParams({ fields, issues, source, isSample, redactions
     petitioner: s(fields.petitioner),
     respondent: s(fields.respondent),
     facts: s(fields.facts),
-    petitioner_arguments: '',
-    respondent_arguments: '',
+    petitioner_arguments: s(fields.petitioner_arguments),
+    respondent_arguments: s(fields.respondent_arguments),
     issues: parseIssues(issues).map((x, i) => `(${String.fromCharCode(65 + (i % 26))}) ${x}`).join('\n'),
     statutory_provisions: s(fields.statutory_provisions),
     prayer: s(fields.prayer),
     source: s(source), is_sample: !!isSample, redactions: Number(redactions) || 0, filename: s(filename),
+    document_id: documentId == null || documentId === '' ? null : documentId,
+    authorities: Array.isArray(authorities) ? authorities : [],
     confirmed_issues: true,
   };
+}
+
+/** Overlay the server's draft-params response ({params, authorities}) on the locally built object. */
+export function mergeDraftParams(local, resp) {
+  const p = (resp && resp.params) || {};
+  const out = { ...local };
+  Object.keys(p).forEach((k) => { if (p[k] != null && p[k] !== '') out[k] = p[k]; });
+  out.authorities = Array.isArray(resp && resp.authorities) ? resp.authorities : (local.authorities || []);
+  out.confirmed_issues = true;
+  return out;
 }
 
 /** i18n key describing how the text was read (no claims beyond what the server reports). */
 export function sourceNoteKey(source, vlm) {
   switch (source) {
-    case 'digital_text': return 'intake.read.digital';
+    case 'digital': case 'digital_text': return 'intake.read.digital';
     case 'ocr': return 'intake.read.ocr';
     case 'vlm': return 'intake.read.vlm';
-    case 'pasted_text': return 'intake.read.pasted';
+    case 'pasted': case 'pasted_text': return 'intake.read.pasted';
+    case 'failed': return 'intake.read.failed';
     default: return vlm ? 'intake.read.vlm' : 'intake.read.unknown';
   }
 }

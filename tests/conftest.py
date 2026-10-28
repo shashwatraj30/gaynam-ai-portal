@@ -20,7 +20,7 @@ for _n in ("USER_MANUAL.md", "COMMERCIAL_PROPOSAL_GYANAM_AI.md"):
         _f.write("# " + _n + "\nfixture document\n")
 os.environ["GYANAM_JWT_SECRET"] = "test-secret-not-for-production"
 os.environ["GYANAM_ENFORCE_AUTH"] = "1"
-os.environ["GYANAM_ALLOW_LEGACY_HEADER"] = "1"
+os.environ["GYANAM_ALLOW_LEGACY_HEADER"] = "0"  # default is off; legacy tests opt in with monkeypatch
 os.environ.pop("GEMINI_API_KEY", None)
 
 import build_fixture  # noqa: E402

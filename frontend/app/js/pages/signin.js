@@ -1,6 +1,6 @@
 // Sign in (public, bare). Role picker from api.auth.roles(); Continue -> api.auth.ssoLogin(role).
 import { h } from '../dom.js';
-import { api, setSession } from '../api.js';
+import { api, setSession, loadProfile } from '../api.js';
 import { t, addMessages } from '../i18n/index.js';
 import { loadCss } from '../ui/shell.js';
 import { button } from '../ui/button.js';
@@ -45,10 +45,14 @@ async function render(params, ctx) {
     try {
       const r = await api.auth.ssoLogin(selected.role);
       setSession({ token: r.access_token, user: r.user });
+      // The SSO response carries only the bare directory record (no permissions) — fetch the full
+      // profile now so the sidebar and every can() check are correct on the very first render,
+      // not just after a manual reload.
+      const fullUser = await loadProfile(r.access_token);
       // Auditors land on the audit trail (plan 5.2) unless a deep link was requested.
       // The router sends next=/ when the visitor just opened the app, so treat "/" as "no deep link".
       const asked = ctx.query.get('next');
-      const next = safeNext(asked && asked !== '/' ? asked : (r.user?.role === 'AUDITOR' ? '/audit' : '/'));
+      const next = safeNext(asked && asked !== '/' ? asked : (fullUser?.role === 'AUDITOR' ? '/audit' : '/'));
       ctx.navigate(next);
     } catch (e) {
       busy = false;

@@ -115,6 +115,48 @@ def _resolve_reference(conn, text: str) -> Optional[Any]:
     return None
 
 
+def _matter_documents(conn, key: str) -> List[Dict[str, Any]]:
+    """Non-archived documents whose matter_key normalises to the same key as the matter."""
+    if not _columns(conn, "documents"):
+        return []
+    want = normalise_matter_key(key) or key.strip().casefold()
+    out = []
+    for r in conn.execute("SELECT id, title, doc_type, status, created_at, matter_key FROM documents "
+                          "WHERE matter_key IS NOT NULL AND matter_key != '' AND status != 'ARCHIVED' "
+                          "ORDER BY created_at DESC, rowid DESC").fetchall():
+        mk = r["matter_key"]
+        if (normalise_matter_key(mk) or mk.strip().casefold()) == want:
+            out.append({"id": r["id"], "title": r["title"], "doc_type": r["doc_type"], "status": r["status"],
+                        "created_at": r["created_at"]})
+    return out
+
+
+def _document_events(conn, key: str, docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """DOCUMENT_* audit rows for this matter (by document id or by the 'matter <key>' text in the details)."""
+    if not docs or not _columns(conn, "audit_logs"):
+        return []
+    ids = {d["id"] for d in docs}
+    want = normalise_matter_key(key) or key.strip().casefold()
+    events = []
+    for r in conn.execute("SELECT id, timestamp, user_name, user_role, action, details, ip_address FROM audit_logs "
+                          "WHERE action LIKE 'DOCUMENT_%' ORDER BY id").fetchall():
+        details = r["details"] or ""
+        m = re.match(r"document ([0-9a-f]+)", details)
+        mm = re.search(r"matter (.+)$", details)
+        hit = (m and m.group(1) in ids) or (mm and (normalise_matter_key(mm.group(1)) or mm.group(1).casefold()) == want)
+        if not hit:
+            continue
+        legacy = (r["user_name"] or "") == LEGACY_AUDIT_USER or not r["user_name"]
+        events.append({
+            "id": r["id"], "timestamp": r["timestamp"], "action": r["action"], "details": details,
+            "draft_ids": [], "document_id": m.group(1) if m else None,
+            "user": None if legacy else r["user_name"], "user_role": None if legacy else r["user_role"],
+            "user_recorded": not legacy, "user_label": r["user_name"] if not legacy else "user not recorded",
+            "ip_address": None if legacy else r["ip_address"],
+        })
+    return events
+
+
 # ---------------------------------------------------------------- matters
 @router.get("/api/matters", dependencies=[Depends(require_any("DRAFT_FULL", "UPLOAD_PLEADING"))])
 def list_matters():
@@ -160,7 +202,17 @@ def get_matter(key: str):
         groups = group_drafts_by_matter(drafts)
         ds = groups.get(key) or groups.get(want) or groups.get(want_norm)
         if not ds:
-            raise HTTPException(status_code=404, detail="Matter not found")
+            docs = _matter_documents(conn, key)
+            if not docs:
+                raise HTTPException(status_code=404, detail="Matter not found")
+            # A matter that so far has documents but no drafts.
+            events = _document_events(conn, key, docs)
+            events.sort(key=lambda e: e["id"])
+            return {
+                "matter_key": want_norm or key, "case_number": "", "title": "", "court": "", "draft_count": 0,
+                "latest_status": None, "next_action": "Confirm a document and start a draft",
+                "is_placeholder": False, "drafts": [], "events": events, "documents": docs,
+            }
         mkey = ds[0]["matter_key_effective"]
         ids = {d["id"] for d in ds}
         events = []
@@ -187,6 +239,9 @@ def get_matter(key: str):
                     "user_label": r["user_name"] if not legacy else "user not recorded",
                     "ip_address": None if legacy else r["ip_address"],
                 })
+        docs = _matter_documents(conn, mkey)
+        events.extend(_document_events(conn, mkey, docs))
+        events.sort(key=lambda e: e["id"])
     finally:
         conn.close()
     latest = max(ds, key=lambda d: d["id"])
@@ -201,6 +256,7 @@ def get_matter(key: str):
         "is_placeholder": mkey in PLACEHOLDER_KEYS or mkey == "unfiled",
         "drafts": [_summarise_draft(d) for d in sorted(ds, key=lambda d: d["id"], reverse=True)],
         "events": events,
+        "documents": docs,
     }
 
 

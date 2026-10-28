@@ -8,6 +8,11 @@ const en = {
   'jd.openOverruling': 'Search for the overruling judgment', 'jd.pdfTitle': 'Source judgment (PDF)', 'jd.openOriginal': 'Open original', 'jd.pdfNote': 'The PDF is the judgment itself.',
   'jd.noPdf': 'No source PDF is linked for this record.', 'jd.noText': 'No full text is held for this record.', 'jd.none': 'Not recorded.', 'jd.noLinks': 'No citation links recorded yet.',
   'jd.sections': 'Judgment sections', 'jd.tab.judgment': 'Judgment', 'jd.tab.headnote': 'Headnote', 'jd.tab.ratio': 'Ratio', 'jd.tab.cited': 'Cited cases',
+  'jd.partyPet': 'Appellant / petitioner', 'jd.partyRes': 'Respondent', 'jd.parties': 'Parties', 'jd.copyRatio': 'Copy ratio', 'jd.copyHeadnote': 'Copy headnote', 'jd.copiedText': 'Copied',
+  'jd.copyPara': 'Copy paragraph with citation', 'jd.paraLink': 'Link to paragraph {n}', 'jd.tab.paragraphs': 'Paragraphs',
+  'jd.parasNone': 'Paragraph text for this judgment is not available yet', 'jd.parasNoneMsg': 'The source PDF is the judgment itself.', 'jd.parasFailed': 'Paragraphs could not be loaded.', 'jd.paraPage': 'page {p}', 'jd.paraMissing': 'Paragraph {n} is not in the loaded text.',
+  'jd.citedByTitle': 'Cited by', 'jd.citedByNone': 'No citing judgments are recorded in the corpus for this record.', 'jd.citedByFailed': 'Citing judgments could not be loaded.', 'jd.citedByPara': 'para {n}',
+  'jd.downloadPdf': 'Download PDF', 'jd.startDraft': 'Start a draft with this judgment',
 };
 addMessages('en', en);
 export default en;

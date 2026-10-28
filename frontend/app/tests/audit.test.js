@@ -16,7 +16,7 @@ test('legacy placeholder users are not recorded', () => {
 });
 
 test('params drop empty values', () => {
-  assert.deepEqual(buildAuditParams({ action: 'ALL', user: ' ', q: 'x', since: '2026-10-01' }), { q: 'x', since: '2026-10-01', limit: 200 });
+  assert.deepEqual(buildAuditParams({ action: 'ALL', user: ' ', q: 'x', since: '2026-10-01' }), { q: 'x', since: '2026-10-01', limit: 50 });
 });
 
 test('filterAuditRows by action, user, q, since', () => {

@@ -3,7 +3,7 @@
 import { registerPage } from '../router.js';
 
 export const PAGE_FILES = [
-  'signin', 'home', 'research', 'judgment', 'citation-check', 'matters', 'matter', 'intake',
+  'signin', 'home', 'research', 'judgment', 'citation-check', 'documents', 'document', 'matters', 'matter', 'intake',
   'drafts', 'studio', 'review', 'graph', 'alerts', 'audit', 'chamber', 'library', 'settings',
   'forbidden', 'not-found', 'kit',
 ];
@@ -18,7 +18,7 @@ export function filesForHash(hash) {
   const base = ['forbidden', 'not-found'];
   const map = {
     '': ['home'], signin: ['signin'], research: ['research'], judgments: ['judgment', 'citation-check'],
-    matters: ['matters', 'matter', 'intake'], drafts: ['drafts', 'studio', 'review'], graph: ['graph'],
+    documents: ['documents', 'document'], matters: ['matters', 'matter', 'intake'], drafts: ['drafts', 'studio', 'review'], graph: ['graph'],
     alerts: ['alerts'], audit: ['audit'], chamber: ['chamber'], library: ['library'], settings: ['settings'],
     forbidden: [], 'not-found': [], _kit: ['kit'],
   };

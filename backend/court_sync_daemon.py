@@ -3,7 +3,7 @@ GYANAM AI — NLU JODHPUR EDITION (POWERED BY KELYVO)
 REAL-TIME SCITATION & HIGH COURT SYNC DAEMON
 -----------------------------------------------------------------
 Automated continuous synchronization engine:
-1. Connects to SCitation Protocol & National Judicial cause list streams.
+1. Runs incremental ingest batches from the open repository (mode: simulated, no live feed).
 2. Ingests incremental daily judgments from Supreme Court & all 25 High Courts.
 3. Automatically updates precedent citation lineage graphs and flags newly overruled precedents.
 4. Provides sub-second status reporting and manual sync trigger for live demonstrations.
@@ -12,7 +12,6 @@ Automated continuous synchronization engine:
 import os
 import sys
 import time
-import random
 import sqlite3
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
@@ -32,14 +31,16 @@ COURTS_MONITORED = [
     "High Court of Judicature at Allahabad"
 ]
 
+SYNC_MODE = "simulated"  # no live court feed is contacted; batches come from the open-repository ingest
+
 SYNC_STATE = {
-    "status": "ONLINE_ACTIVE",
-    "last_sync_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    "total_synced_today": 48,
+    "status": "IDLE",
+    "mode": SYNC_MODE,
+    "last_sync_timestamp": None,
+    "total_synced_today": 0,
     "current_batch_in_progress": False,
-    "last_sync_duration_ms": 342,
+    "last_sync_duration_ms": None,
     "monitored_courts_count": len(COURTS_MONITORED),
-    "scitation_protocol_status": "AUTHENTICATED_HEALTHY"
 }
 
 def init_sync_table():
@@ -62,68 +63,90 @@ def init_sync_table():
 
 init_sync_table()
 
+def _refresh_state_from_logs():
+    """Seed/refresh SYNC_STATE from sync_logs so counters are real, never invented."""
+    try:
+        conn = get_connection()
+        try:
+            last = conn.execute(
+                "SELECT timestamp, duration_ms FROM sync_logs WHERE status = 'SUCCESS' ORDER BY id DESC LIMIT 1").fetchone()
+            today = datetime.now().strftime("%Y-%m-%d")
+            total = conn.execute(
+                "SELECT COALESCE(SUM(cases_ingested), 0) FROM sync_logs WHERE status = 'SUCCESS' AND timestamp >= ?",
+                (today,)).fetchone()[0]
+        finally:
+            conn.close()
+        SYNC_STATE["last_sync_timestamp"] = last[0] if last else None
+        SYNC_STATE["last_sync_duration_ms"] = last[1] if last else None
+        SYNC_STATE["total_synced_today"] = int(total or 0)
+    except Exception as e:
+        print(f"sync state refresh warning: {e}")
+
+_refresh_state_from_logs()
+
 def run_incremental_sync(batch_size: int = 10) -> Dict[str, Any]:
     """
-    Executes live incremental sync against authorized Indian court open repositories
-    (e-SCR / AWS Open Data / KanoonGPT Open Legal Initiative).
-    Strictly ingests genuine judgments with provenance.
+    Runs one incremental ingest batch from the open judgment repository (e-SCR parquet).
+    Mode is "simulated": no live court feed is contacted. A raised error or a batch that inserts
+    nothing because of an error is logged as FAILED.
     """
+    batch_size = max(1, min(int(batch_size or 10), 500))
     start_time = time.time()
     SYNC_STATE["current_batch_in_progress"] = True
-    
+    SYNC_STATE["status"] = "RUNNING"
+    inserted = 0
+    error = None
     try:
         from ingest_authentic_cases import ingest_sci_parquet_year
-        # Ingest a genuine incremental batch from the open repository for year 1951
-        inserted = ingest_sci_parquet_year(1951, max_records=batch_size)
+        inserted = int(ingest_sci_parquet_year(1951, max_records=batch_size) or 0)
     except Exception as e:
-        print(f"Error executing authentic sync: {e}")
+        error = str(e) or e.__class__.__name__
+        print(f"Error executing sync batch: {error}")
         inserted = 0
-        
-    conn = get_connection()
-    cursor = conn.cursor()
-    
+
     elapsed_ms = int((time.time() - start_time) * 1000)
-    
-    # Log sync event
-    cursor.execute("""
-    INSERT INTO sync_logs (timestamp, court, cases_ingested, duration_ms, status, details)
-    VALUES (?, ?, ?, ?, ?, ?);
-    """, (
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "SCitation Universal Grid (SC + 25 HCs)",
-        inserted,
-        elapsed_ms,
-        "SUCCESS",
-        f"Batch of {inserted} decisions synchronized and indexed into FTS5."
-    ))
-    conn.commit()
-    conn.close()
-    
-    SYNC_STATE["last_sync_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    SYNC_STATE["total_synced_today"] += inserted
-    SYNC_STATE["last_sync_duration_ms"] = elapsed_ms
+    outcome = "FAILED" if error else "SUCCESS"
+    detail = (f"Sync failed: {error[:300]}" if error
+              else f"Batch of {inserted} decisions ingested and indexed into FTS5.")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        conn = get_connection()
+        conn.execute("""
+        INSERT INTO sync_logs (timestamp, court, cases_ingested, duration_ms, status, details)
+        VALUES (?, ?, ?, ?, ?, ?);
+        """, (now, "Open repository: Supreme Court e-SCR (simulated feed)", inserted, elapsed_ms, outcome, detail))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"sync log write warning: {e}")
+
     SYNC_STATE["current_batch_in_progress"] = False
-    
-    return {
-        "status": "SUCCESS",
+    if error:
+        SYNC_STATE["status"] = "FAILED"
+    else:
+        SYNC_STATE["status"] = "IDLE"
+        SYNC_STATE["last_sync_duration_ms"] = elapsed_ms
+        _refresh_state_from_logs()
+
+    result = {
+        "status": outcome,
+        "mode": SYNC_MODE,
         "cases_ingested": inserted,
         "duration_ms": elapsed_ms,
-        "synced_at": SYNC_STATE["last_sync_timestamp"],
+        "synced_at": now,
         "total_synced_today": SYNC_STATE["total_synced_today"],
-        "courts_contacted": len(COURTS_MONITORED)
     }
+    if error:
+        result["error"] = error[:300]
+    return result
 
 def get_sync_status() -> Dict[str, Any]:
-    """Returns real-time sync metrics."""
+    """Returns sync metrics derived from sync_logs. Mode is "simulated" (no live feed)."""
     return {
-        "sync_state": SYNC_STATE,
+        "mode": SYNC_MODE,
+        "sync_state": dict(SYNC_STATE),
         "monitored_courts": COURTS_MONITORED,
-        "scitation_feed": {
-            "protocol_version": "SCitation-v3.4-IN",
-            "encryption": "TLS 1.3 / AES-256",
-            "last_heartbeat": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "latency": f"{random.randint(18, 36)}ms"
-        }
+        "scitation_feed": {"connected": False, "note": "No live court feed configured; sync runs from the open repository."},
     }
 
 def get_sync_history() -> List[Dict[str, Any]]:
@@ -133,4 +156,4 @@ def get_sync_history() -> List[Dict[str, Any]]:
     cursor.execute("SELECT * FROM sync_logs ORDER BY id DESC LIMIT 15")
     rows = cursor.fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    return [{**dict(r), "mode": SYNC_MODE} for r in rows]

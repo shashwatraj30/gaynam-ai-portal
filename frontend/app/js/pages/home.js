@@ -1,5 +1,5 @@
 // Home: role variants per plan §5.2. Only fields marked reliable in plan §6 are shown (P5/P9).
-import { h } from '../dom.js';
+import { h, icon } from '../dom.js';
 import { api } from '../api.js';
 import { t, addMessages } from '../i18n/index.js';
 import { loadCss } from '../ui/shell.js';
@@ -18,7 +18,8 @@ import { errorState } from '../ui/error-state.js';
 import { field, input } from '../ui/form.js';
 import {
   homeVariant, greetingKey, sortMatters, matterCounts, pickAttention, alertCount, summarizeLedger,
-  shapeDistribution, indexedTotal, activityEvents, lastSyncTimestamp, syncRows, userSummary,
+  shapeDistribution, activityEvents, lastSyncTimestamp, syncRows, userSummary, isSimulatedSync, kpiTiles, quickLaunch,
+  metricsCourtRows, metricsStatusRows,
 } from './lib/home-logic.js';
 import { displayName } from './lib/signin-logic.js';
 import { loadDensity, applyDensity } from './lib/settings-logic.js';
@@ -29,6 +30,15 @@ addMessages('en', en);
 addMessages('hi', hi);
 
 const enc = encodeURIComponent;
+
+// One dashboard_metrics request per render, shared by the KPI strip, distributions and admin cards; Refresh clears it.
+let metricsP = null;
+const refreshers = [];
+function getMetrics() {
+  if (!metricsP) metricsP = api.dashboardMetrics().catch((e) => { metricsP = null; throw e; });
+  return metricsP;
+}
+function refreshAll() { metricsP = null; refreshers.forEach((run) => run()); }
 
 /** A card whose body loads asynchronously: skeleton -> data | empty | error with Retry. */
 function asyncCard({ title, actions, load, render, className }) {
@@ -43,6 +53,7 @@ function asyncCard({ title, actions, load, render, className }) {
       body.replaceChildren(errorState({ message: e.message, requestId: e.requestId, onRetry: run, retryLabel: t('state.retry') }));
     }
   }
+  refreshers.push(run);
   run();
   return el;
 }
@@ -155,7 +166,7 @@ function ledgerCard(ctx, { withOpen = true } = {}) {
 function activityCard() {
   return asyncCard({
     title: t('home.admin.activity'),
-    load: () => api.dashboardMetrics(),
+    load: getMetrics,
     render: (m) => {
       const ev = activityEvents(m?.recent_activity, 6).map((e) => ({ ...e, time: e.time ? formatDateTime(e.time) : '' }));
       return ev.length ? timeline(ev) : h('p', { class: 'g-meta' }, t('home.admin.noActivity'));
@@ -163,15 +174,27 @@ function activityCard() {
   });
 }
 
-function corpusAdminCard() {
+function kpiCard() {
   return asyncCard({
-    title: t('home.admin.corpus'),
-    load: () => api.dashboardMetrics(),
+    title: t('home.kpi.title'), className: 'home__kpi',
+    load: getMetrics,
     render: (m) => {
+      const tiles = kpiTiles(m);
+      if (!tiles.length) return emptyState({ title: t('home.kpi.empty'), message: t('home.kpi.emptyMsg') });
       return h('div', { class: 'g-stack' },
-        h('div', { class: 'home__stats' }, statTile({ label: t('home.admin.total'), value: formatNumber(m?.total_judgments) })));
+        h('div', { class: 'home__stats home__kpis', role: 'list' },
+          ...tiles.map((k) => h('div', { role: 'listitem' }, statTile({ label: t(k.labelKey), value: formatNumber(k.value) })))),
+        h('p', { class: 'g-meta' }, t('home.kpi.note')));
     },
   });
+}
+
+function launchCard(ctx) {
+  const items = quickLaunch(ctx.can);
+  if (!items.length) return null;
+  return h('nav', { class: 'home__launch', 'aria-label': t('home.launch.title') },
+    ...items.map((i) => h('a', { class: 'home__tile', href: `#${i.route}`, dataset: { launch: i.id } },
+      icon(i.icon, 20), h('span', { class: 'home__tile-label' }, t(i.labelKey)))));
 }
 
 /** Horizontal bars. Visual list is aria-hidden; the same data is exposed as a visually hidden table. Every bar shows label, count and % as text. */
@@ -203,12 +226,10 @@ function distBars(rows, key, caption, labelHead) {
 function courtDistCard() {
   return asyncCard({
     title: t('home.dist.courts'),
-    load: () => api.status(),
-    render: (s) => {
-      const total = indexedTotal(s);
+    load: getMetrics,
+    render: (m) => {
       return h('div', { class: 'g-stack' },
-        total ? h('div', { class: 'home__stats' }, statTile({ label: t('home.dist.total'), value: formatNumber(total) })) : null,
-        distBars(s?.court_distribution, 'court', t('home.dist.courts'), t('home.admin.court')),
+        distBars(metricsCourtRows(m), 'court', t('home.dist.courts'), t('home.admin.court')),
         h('p', { class: 'g-meta' }, t('home.dist.note')));
     },
   });
@@ -217,9 +238,9 @@ function courtDistCard() {
 function statusDistCard() {
   return asyncCard({
     title: t('home.dist.status'),
-    load: () => api.status(),
-    render: (s) => h('div', { class: 'g-stack' },
-      distBars(s?.status_distribution, 'precedent_status', t('home.dist.status'), t('home.dist.statusCol')),
+    load: getMetrics,
+    render: (m) => h('div', { class: 'g-stack' },
+      distBars(metricsStatusRows(m), 'precedent_status', t('home.dist.status'), t('home.dist.statusCol')),
       h('p', { class: 'g-meta' }, t('home.dist.note'))),
   });
 }
@@ -234,10 +255,12 @@ function syncCard() {
     render: ({ status, history }) => {
       const ts = lastSyncTimestamp(status);
       const rows = syncRows(history, 5);
+      const sim = isSimulatedSync(status) || isSimulatedSync(history);
       return h('div', { class: 'g-stack' },
+        sim ? h('div', { class: 'home__simsync' }, chip({ label: t('home.sync.simulated'), tone: 'warn' }), h('span', { class: 'g-meta' }, t('home.sync.simulatedNote'))) : null,
         h('div', { class: 'home__stats' },
           statTile({ label: t('home.admin.lastSync'), value: ts ? formatDateTime(ts) : '-' }),
-          statTile({ label: t('home.admin.syncState'), value: status?.sync_state?.status || '-' })),
+          statTile({ label: t('home.admin.syncState'), value: sim ? t('home.sync.simulated') : (status?.sync_state?.status || '-') })),
         h('h3', {}, t('home.admin.syncHistory')),
         table({
           caption: t('home.admin.syncHistory'),
@@ -279,9 +302,12 @@ async function render(params, ctx) {
   const variant = homeVariant(user.role);
   const name = displayName(user.full_name || '') || t('role.unknown');
   const subEl = h('p', { class: 'g-page__lede' });
+  metricsP = null; refreshers.length = 0;
   const head = h('header', { class: 'g-page__head' },
-    h('div', {}, h('h1', { class: 'g-page__title' }, t(`home.greeting.${greetingKey(new Date().getHours())}`, { name })), subEl));
-  const sections = [];
+    h('div', {}, h('h1', { class: 'g-page__title' }, t(`home.greeting.${greetingKey(new Date().getHours())}`, { name })), subEl),
+    h('div', { class: 'g-page__actions' }, button({ label: t('home.refresh'), variant: 'ghost', onClick: refreshAll })));
+  const sections = [kpiCard(), launchCard(ctx)];
+  const showDist = ctx.can('SEARCH') || variant === 'admin';
   const canMatters = ctx.can('DRAFT_FULL');
 
   if (variant === 'judicial' || variant === 'researcher') {
@@ -291,6 +317,7 @@ async function render(params, ctx) {
       sections.push(attentionCard());
     }
     if (ctx.can('SEARCH')) sections.push(corpusNew());
+    if (showDist) sections.push(h('div', { class: 'home__cols' }, courtDistCard(), statusDistCard()));
     if (canMatters) {
       api.matters().then((res) => {
         const s = subtitle(variant, ctx, res?.matters);
@@ -300,16 +327,18 @@ async function render(params, ctx) {
   } else if (variant === 'academic') {
     if (ctx.can('SEARCH')) sections.push(askBox(ctx));
     sections.push(h('div', { class: 'home__cols' }, lineageCard(), corpusNew()));
+    if (showDist) sections.push(h('div', { class: 'home__cols' }, courtDistCard(), statusDistCard()));
   } else if (variant === 'admin') {
     subEl.textContent = t('home.admin.corpus');
-    sections.push(corpusAdminCard(), h('div', { class: 'home__cols' }, courtDistCard(), statusDistCard()), syncCard());
+    sections.push(h('div', { class: 'home__cols' }, courtDistCard(), statusDistCard()), syncCard());
     if (ctx.can('MANAGE_USERS')) sections.push(usersCard());
     if (ctx.can('VIEW_AUDIT')) sections.push(ledgerCard(ctx));
   } else {
     subEl.textContent = t('home.auditor.lede');
     sections.push(ledgerCard(ctx), activityCard());
+    if (showDist) sections.push(h('div', { class: 'home__cols' }, courtDistCard(), statusDistCard()));
   }
-  return h('section', { class: 'g-page' }, head, ...sections);
+  return h('section', { class: 'g-page' }, head, ...sections.filter(Boolean));
 }
 
 export default { route: '/', title: 'Home', permission: null, render, onLeave() {} };

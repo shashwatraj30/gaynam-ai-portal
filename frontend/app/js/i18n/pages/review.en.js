@@ -65,4 +65,9 @@ export default {
   'review.return.msg': 'The clerk will be able to change it and send it for review again.',
   'review.return.done': 'Returned to the clerk.',
   'review.export.done': 'DOCX downloaded.',
+  'review.return.reason': 'Reason for returning',
+  'review.return.reasonHint': 'Required. At least 5 characters. The clerk sees this reason in the studio.',
+  'review.return.reasonShort': 'Write at least 5 characters.',
+  'review.return.reasonServer': 'The server needs a reason of at least 5 characters.',
+  'review.return.cancel': 'Cancel',
 };

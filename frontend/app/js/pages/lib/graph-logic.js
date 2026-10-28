@@ -181,3 +181,85 @@ export function graphHref(id) { return `#/graph/${encodeURIComponent(id)}`; }
 export function isEmptyGraph(data) {
   return !data || !Array.isArray(data.edges) || data.edges.length === 0 || data.is_linked === false;
 }
+
+// ---- Lineage streams (api.lineages() with a labelled local fallback), node actions, treatments ----
+const str = (v) => (v == null ? '' : String(v).trim());
+
+/** Map one API/local node to a view node. Empty fields stay '' (never invented). */
+export function mapLineageNode(n = {}) {
+  return {
+    key: n.id != null ? String(n.id) : `${n.year || ''}-${str(n.title)}`,
+    judgmentId: n.judgment_id != null && n.judgment_id !== '' ? n.judgment_id : null,
+    year: n.year != null && n.year !== '' ? String(n.year) : '',
+    title: str(n.title), citation: str(n.citation), holding: str(n.holding),
+    coram: str(n.coram), bench: str(n.bench), impact: str(n.impact), overruled: !!n.overruled,
+  };
+}
+
+/** API payload -> [{id,title,subtitle,nodes[]}] sorted by year inside each stream. null when unusable. */
+export function mapStreams(payload) {
+  const s = payload && Array.isArray(payload.streams) ? payload.streams : null;
+  if (!s || !s.length) return null;
+  return s.map((x, i) => ({
+    id: str(x.id) || `stream${i}`, title: str(x.title), subtitle: str(x.subtitle),
+    nodes: (Array.isArray(x.nodes) ? x.nodes : []).map(mapLineageNode).sort((a, b) => Number(a.year || 0) - Number(b.year || 0)),
+  }));
+}
+
+/** Local lineages.js data -> streams (same shape). titleOf(key) -> {title, subtitle} supplies labels. */
+export function fallbackStreams(lineages = [], titleOf = () => ({})) {
+  return lineages.map((l) => {
+    const lab = titleOf(l.key) || {};
+    return {
+      id: l.key, title: str(lab.title) || l.key, subtitle: str(lab.subtitle),
+      nodes: l.nodes.map((n) => mapLineageNode({ year: n.year, title: n.title, citation: n.citation, judgment_id: n.id, overruled: n.overruled })),
+    };
+  });
+}
+
+/** {streams, source:'api'|'local'}: local data when the call failed or returned nothing. */
+export function resolveStreams(payload, lineages, titleOf) {
+  const fromApi = mapStreams(payload);
+  if (fromApi) return { streams: fromApi, source: 'api' };
+  return { streams: fallbackStreams(lineages, titleOf), source: 'local' };
+}
+
+/** Actions for a lineage node: open judgment/graph when it has a corpus id, else search for it. */
+export function nodeActions(node) {
+  if (!node) return [];
+  if (node.judgmentId != null && node.judgmentId !== '') {
+    const id = encodeURIComponent(node.judgmentId);
+    return [{ kind: 'open', href: `#/judgments/${id}` }, { kind: 'graph', href: `#/graph/${id}` }];
+  }
+  const q = node.title || node.citation;
+  return q ? [{ kind: 'search', href: `#/research?q=${encodeURIComponent(q)}` }] : [];
+}
+
+/** Search-box hits -> [{id,title,meta}] (drops rows without an id). */
+export function searchHits(data) {
+  const r = data && Array.isArray(data.results) ? data.results : [];
+  return r.filter((x) => x && x.id != null).map((x) => ({
+    id: x.id, title: str(x.title) || str(x.citation),
+    meta: [x.citation, x.court, x.year || (x.date ? String(x.date).slice(0, 4) : '')].map(str).filter(Boolean).join(' · '),
+  }));
+}
+
+export const TREATMENT_KEYS = ['followed', 'distinguished', 'overruled', 'referred', 'affirmed', 'modified'];
+const TREAT_ALIAS = {
+  follow: 'followed', followed: 'followed', distinguish: 'distinguished', distinguished: 'distinguished',
+  overrule: 'overruled', overruled: 'overruled', refer: 'referred', referred: 'referred', cited: 'referred',
+  affirm: 'affirmed', affirmed: 'affirmed', modify: 'modified', modified: 'modified',
+};
+
+/** Count treatments by later cases (cited_by). {available, counts, total, other}. */
+export function treatmentCounts(data) {
+  const counts = Object.fromEntries(TREATMENT_KEYS.map((k) => [k, 0]));
+  if (!data || data.available !== true) return { available: false, counts, total: 0, other: 0 };
+  let other = 0;
+  for (const r of Array.isArray(data.cited_by) ? data.cited_by : []) {
+    const k = TREAT_ALIAS[str(r && r.treatment).toLowerCase()];
+    if (k) counts[k] += 1; else other += 1;
+  }
+  const total = TREATMENT_KEYS.reduce((a, k) => a + counts[k], 0) + other;
+  return { available: true, counts, total, other };
+}

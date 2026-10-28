@@ -21,3 +21,16 @@
 .g-audit__coltrack { display: flex; align-items: flex-end; width: 100%; height: 120px; background: var(--surface-2); border-radius: var(--r-md); overflow: hidden; }
 .g-audit__colfill { width: 100%; min-height: 1px; }
 .g-audit__colnum, .g-audit__colday { font-size: calc(11px * var(--fz)); line-height: 1.2; color: var(--ink-2); min-height: 1.2em; }
+.g-audit__ip { font-size: var(--fs-meta); white-space: nowrap; }
+.g-audit__pager { display: flex; flex-wrap: wrap; gap: var(--s3); align-items: center; justify-content: space-between; margin-top: var(--s3); }
+.g-printroot { display: none; }
+@media print {
+  .g-printing .g-shell, .g-printing .g-toasts { display: none !important; }
+  .g-printing .g-printroot { display: block; background: white; color: black; padding: 0; font-family: var(--font-sans); }
+  .g-printroot h1 { font-size: 20pt; margin: 0 0 8pt; }
+  .g-printroot p { font-size: 10pt; margin: 0 0 4pt; }
+  .g-printroot__table { width: 100%; border-collapse: collapse; font-size: 9pt; margin-top: 8pt; }
+  .g-printroot__table th, .g-printroot__table td { border: 1px solid black; padding: 3pt 5pt; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+  .g-printroot__table thead { display: table-header-group; }
+  .g-printroot__table tr { break-inside: avoid; }
+}

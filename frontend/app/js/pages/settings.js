@@ -4,7 +4,7 @@ import { t, addMessages, getLang, setLang } from '../i18n/index.js';
 import { loadCss } from '../ui/shell.js';
 import { card } from '../ui/card.js';
 import { chip } from '../ui/chip.js';
-import { DENSITIES, loadDensity, saveDensity, applyDensity, FONT_SIZES, loadFontSize, saveFontSize, applyFontSize } from './lib/settings-logic.js';
+import { DENSITIES, loadDensity, saveDensity, applyDensity, FONT_SIZES, loadFontSize, saveFontSize, applyFontSize, THEMES, loadTheme, saveTheme, applyTheme } from './lib/settings-logic.js';
 import en from '../i18n/pages/settings.en.js';
 import hi from '../i18n/pages/settings.hi.js';
 
@@ -35,6 +35,10 @@ async function render(params, ctx) {
       radioGroup('lang', t('settings.language.label'),
         [{ value: 'en', label: 'English' }, { value: 'hi', label: 'हिन्दी' }], getLang(), t('settings.language.hint'),
         (v) => setLang(v))),
+    card({ title: t('settings.theme') },
+      radioGroup('theme', t('settings.theme.label'),
+        THEMES.map((v) => ({ value: v, label: t(`settings.theme.${v}`) })), loadTheme(), t('settings.theme.hint'),
+        (v) => { applyTheme(saveTheme(v)); ctx.toast(t('settings.saved'), { tone: 'primary' }); })),
     card({ title: t('settings.density') },
       radioGroup('density', t('settings.density.label'),
         DENSITIES.map((d) => ({ value: d, label: t(`settings.density.${d}`) })), density, t('settings.density.hint'),

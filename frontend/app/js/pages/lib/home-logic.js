@@ -127,3 +127,39 @@ export function indexedTotal(status) {
   const n = Number(status?.total_judgments_indexed);
   return Number.isFinite(n) && n > 0 ? n : null;
 }
+
+/** True when a sync payload (status or history) says it is simulated, so the UI never implies a live court connection. */
+export function isSimulatedSync(p) {
+  const m = (x) => String(x?.mode ?? '').toLowerCase() === 'simulated';
+  if (!p) return false;
+  return m(p) || m(p.sync_state) || (Array.isArray(p) && p.some(m)) || (Array.isArray(p?.history) && p.history.some(m));
+}
+
+const KPI_FIELDS = [
+  ['total_judgments', 'home.kpi.total'], ['supreme_court_count', 'home.kpi.sc'], ['high_court_count', 'home.kpi.hc'],
+  ['searches_performed', 'home.kpi.searches'], ['drafts_created', 'home.kpi.drafts'],
+];
+/** KPI tiles from /api/dashboard_metrics: only fields the backend sent for this role (numbers), in a fixed order. */
+export function kpiTiles(m) {
+  if (!m || typeof m !== 'object') return [];
+  return KPI_FIELDS.filter(([k]) => m[k] != null && Number.isFinite(Number(m[k])))
+    .map(([k, labelKey]) => ({ id: k, labelKey, value: Number(m[k]) }));
+}
+
+const LAUNCH = [
+  { id: 'upload', route: '/documents', labelKey: 'home.launch.upload', icon: 'upload', permission: ['UPLOAD_PLEADING', 'DRAFT_FULL'] },
+  { id: 'research', route: '/research', labelKey: 'home.launch.research', icon: 'search', permission: 'SEARCH' },
+  { id: 'verify', route: '/judgments/check', labelKey: 'home.launch.verify', icon: 'scale', permission: ['VERIFY_CITATION', 'SEARCH'] },
+  { id: 'draft', route: '/drafts', labelKey: 'home.launch.draft', icon: 'edit', permission: 'DRAFT_FULL' },
+];
+/** Quick-launch tiles the user may use (permission string or "any of" array). */
+export function quickLaunch(can) {
+  return LAUNCH.filter((i) => (Array.isArray(i.permission) ? i.permission.some((p) => can(p)) : can(i.permission)));
+}
+
+/** dashboard_metrics -> rows for shapeDistribution: courts [{court,c}], status {name: n} -> [{precedent_status,c}]. */
+export function metricsCourtRows(m) { return Array.isArray(m?.top_courts) ? m.top_courts : []; }
+export function metricsStatusRows(m) {
+  const s = m?.status_counts;
+  return s && typeof s === 'object' ? Object.entries(s).map(([k, c]) => ({ precedent_status: k, c })) : [];
+}

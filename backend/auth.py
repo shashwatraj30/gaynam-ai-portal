@@ -230,9 +230,9 @@ def enforce_auth_enabled() -> bool:
     return os.environ.get("GYANAM_ENFORCE_AUTH", "1").strip() not in ("0", "false", "False", "no", "")
 
 def legacy_header_allowed() -> bool:
-    """X-Gyanam-Legacy is honoured only when GYANAM_ALLOW_LEGACY_HEADER=1 (default 1 until cutover).
+    """X-Gyanam-Legacy is honoured only when GYANAM_ALLOW_LEGACY_HEADER=1 (default 0: off).
     Production nginx must strip the header from client requests."""
-    return os.environ.get("GYANAM_ALLOW_LEGACY_HEADER", "1").strip() in ("1", "true", "True", "yes")
+    return os.environ.get("GYANAM_ALLOW_LEGACY_HEADER", "0").strip() in ("1", "true", "True", "yes")
 
 def is_legacy_request(request: Optional[Request]) -> bool:
     """Legacy fallback applies when enforcement is off or the legacy header is present."""
@@ -251,14 +251,32 @@ class AuthError(HTTPException):
 def auth_error_handler(request, exc: "AuthError"):
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail, "code": exc.code})
 
+def is_user_suspended(user_id: Optional[str]) -> bool:
+    """True when user_status holds active=0 for this user. One small indexed lookup; fails open if the table is absent."""
+    if not user_id:
+        return False
+    try:
+        from database import get_connection
+        conn = get_connection()
+        try:
+            row = conn.execute("SELECT active FROM user_status WHERE user_id = ?", (user_id,)).fetchone()
+        finally:
+            conn.close()
+        return bool(row) and not row[0]
+    except Exception:
+        return False
+
 def get_current_user_from_header(request: Request, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     """FastAPI dependency: token -> user. No token -> legacy profile if legacy mode, else 401."""
     if authorization and authorization.startswith("Bearer "):
         token = authorization.split(" ", 1)[1].strip()
         try:
-            return decode_access_token(token)
+            payload = decode_access_token(token)
         except HTTPException as e:
             raise AuthError(401, e.detail, "AUTH_INVALID_TOKEN")
+        if is_user_suspended(payload.get("user_id") or payload.get("sub")):
+            raise AuthError(403, "This account is suspended. Contact the administrator.", "ACCOUNT_SUSPENDED")
+        return payload
     if is_legacy_request(request):
         request.state.legacy_fallback = True
         return INSTITUTIONAL_DIRECTORY[LEGACY_PROFILE_EMAIL]

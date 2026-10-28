@@ -12,7 +12,7 @@ test('parseSections extracts unique section tokens', () => {
 
 test('buildSearchBody matches the legacy payload shape', () => {
   const b = buildSearchBody('  bail  ', { ...emptyFilters(), court: 'Rajasthan', status: 'OVERRULED', judge: ' Sharma ' });
-  assert.deepEqual(b, { query: 'bail', court: 'Rajasthan', judge: 'Sharma', precedent_status: 'OVERRULED', limit: 30 });
+  assert.deepEqual(b, { query: 'bail', court: 'Rajasthan', judge: 'Sharma', precedent_status: 'OVERRULED', sort: 'bench', limit: 30, offset: 0 });
   assert.equal(buildSearchBody('theft', { ...emptyFilters(), sections: '379' }).query, 'theft section 379');
 });
 

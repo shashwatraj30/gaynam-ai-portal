@@ -132,3 +132,26 @@ export function lastActivity(matter) {
   (matter.events || []).forEach((e) => e.timestamp && ts.push(e.timestamp));
   return ts.sort().pop() || null;
 }
+
+// ---- documents (matter payload `documents` array, API_V3_CONTRACT: Document summaries) ----
+export function matterDocuments(m) {
+  return (m && Array.isArray(m.documents) ? m.documents : []).filter((d) => d && d.id != null && d.status !== 'ARCHIVED');
+}
+export function documentHref(d) { return `#/documents/${encodeURIComponent(d.id)}`; }
+export function newDocumentHref(key) { return `#/matters/new?matter=${encodeURIComponent(key)}`; }
+/** Issues of the first confirmed document (only when present on the payload), else []. */
+export function confirmedIssues(m) {
+  const d = matterDocuments(m).find((x) => x.status === 'CONFIRMED' || (x.extraction && x.extraction.confirmed));
+  const issues = d && d.extraction && Array.isArray(d.extraction.issues) ? d.extraction.issues : [];
+  return issues.map((x) => String(x || '').trim()).filter(Boolean);
+}
+/** Research link query: the first confirmed document's issue, else the case number, else ''. */
+export function researchQuery(m) {
+  const first = confirmedIssues(m)[0];
+  if (first) return first;
+  return (m && m.case_number) ? String(m.case_number) : '';
+}
+export function researchHref(m) {
+  const q = researchQuery(m);
+  return `#/research${q ? `?q=${encodeURIComponent(q)}` : ''}`;
+}

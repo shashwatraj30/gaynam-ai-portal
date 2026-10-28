@@ -47,3 +47,24 @@ export function stepFontSize(current, dir) {
   const i = FONT_SIZES.indexOf(normalizeFontSize(current));
   return FONT_SIZES[Math.min(FONT_SIZES.length - 1, Math.max(0, i + (dir > 0 ? 1 : -1)))];
 }
+
+// ---- Theme: system (follow the OS) / light / dark, applied through <html data-theme> (css/tokens.css) ----
+export const THEMES = ['system', 'light', 'dark'];
+export const THEME_KEY = 'gyanam.theme';
+
+export function normalizeTheme(v) { return THEMES.includes(v) ? v : 'system'; }
+
+export function loadTheme(store = defStore()) {
+  try { return normalizeTheme(store?.getItem(THEME_KEY)); } catch { return 'system'; }
+}
+export function saveTheme(v, store = defStore()) {
+  const s = normalizeTheme(v);
+  try { store?.setItem(THEME_KEY, s); } catch { /* ignore */ }
+  return s;
+}
+/** "system" removes data-theme so the prefers-color-scheme rule decides; light/dark set it. */
+export function applyTheme(v, root = (typeof document !== 'undefined' ? document.documentElement : null)) {
+  const s = normalizeTheme(v);
+  if (root) { if (s === 'system') delete root.dataset.theme; else root.dataset.theme = s; }
+  return s;
+}

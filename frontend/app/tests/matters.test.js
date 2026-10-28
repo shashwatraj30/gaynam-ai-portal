@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   statusGroup, groupCounts, filterMatters, sortMatters, matterHeading, nextActionKey, eventCategory, filterEvents,
   eventCounts, groupEventsByDay, timeOf, draftHref, lastActivity, userRecorded, humanizeAction, eventTitleKey,
+  matterDocuments, documentHref, newDocumentHref, confirmedIssues, researchQuery, researchHref,
 } from '../js/pages/lib/matters-logic.js';
 import en from '../js/i18n/pages/matters.en.js';
 import hi from '../js/i18n/pages/matters.hi.js';
@@ -68,4 +69,20 @@ test('Hindi has every English key for the three pages', () => {
   for (const [e, hh] of [[en, hi], [mEn, mHi], [iEn, iHi]]) {
     assert.deepEqual(Object.keys(e).sort(), Object.keys(hh).sort());
   }
+});
+
+test('matter documents and research link', () => {
+  const m = { case_number: 'WP 1/2024', documents: [
+    { id: 3, status: 'READ', extraction: { issues: ['draft?'] } },
+    { id: 4, status: 'CONFIRMED', extraction: { confirmed: true, issues: [' Is it valid? ', ''] } },
+    { id: 5, status: 'ARCHIVED' }] };
+  assert.deepEqual(matterDocuments(m).map((d) => d.id), [3, 4]);
+  assert.deepEqual(matterDocuments({}), []);
+  assert.equal(documentHref({ id: 4 }), '#/documents/4');
+  assert.equal(newDocumentHref('WP 1/2024'), '#/matters/new?matter=WP%201%2F2024');
+  assert.deepEqual(confirmedIssues(m), ['Is it valid?']);
+  assert.equal(researchQuery(m), 'Is it valid?');
+  assert.equal(researchQuery({ case_number: 'WP 1/2024', documents: [{ id: 1, status: 'READ' }] }), 'WP 1/2024');
+  assert.equal(researchHref({}), '#/research');
+  assert.equal(researchHref({ case_number: 'A B' }), '#/research?q=A%20B');
 });

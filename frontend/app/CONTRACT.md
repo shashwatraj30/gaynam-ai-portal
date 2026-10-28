@@ -72,5 +72,8 @@ Class naming: BEM-ish prefixed `g-` (e.g. `g-card`, `g-chip--danger`). Component
 ## shell (FE-CORE)
 `mountShell(root)` returns `{content: HTMLElement}`; renders sidebar (role-aware items per plan §5.1), topbar (breadcrumb, History button, Ctrl K, freshness indicator "Corpus synced N min ago" from `api.sync.status()`, EN/HI switch, user menu with sign-out), a live `aria-live` region, and the offline banner. `loadCss(file)` exported for page CSS.
 
+## Cross-page UI libs (v3 convention)
+A page agent with more than one related route (e.g. `documents.js` + `document.js`, or `research.js` + `judgment.js`) may put DOM-building helpers shared by that family in `js/pages/lib/<name>-ui.js` (e.g. `document-ui.js`, `research-ui.js`, `judgment-ui.js`, `draft-ui.js`) alongside the pure-logic `<name>-logic.js`, and import it from any page in the family. These stay owned by the same page agent; they are not promoted to `js/ui/kit.js` unless a second, unrelated page needs them. Related pages also share a one-letter-ish CSS class prefix across their `page-*.css` files (e.g. `dc-` for both `page-documents.css` and `page-document.css`) instead of repeating full page names in class names.
+
 ## Testing
 Pure logic (format, router matching, api error mapping with a fake fetch, status mappings, store) is unit-tested with `node --test` in `tests/`. Anything that touches `document` must be guarded so pure modules import cleanly in Node (no top-level DOM access in `api.js format.js escape.js store.js status.js i18n`).

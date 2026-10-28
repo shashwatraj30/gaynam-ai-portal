@@ -20,7 +20,7 @@ import { toast } from '../ui/toast.js';
 import en from '../i18n/pages/audit.en.js';
 import hi from '../i18n/pages/audit.hi.js';
 import { summarize, topN, analyticsCsv, NOT_RECORDED } from './lib/audit-analytics.js';
-import { isUserRecorded, humanizeAction, buildAuditParams, filterAuditRows, distinctActions, shortHash, toCsv, verifySummary, normalizeSync, formatDuration } from './lib/audit-logic.js';
+import { isUserRecorded, humanizeAction, buildAuditParams, filterAuditRows, distinctActions, shortHash, toCsv, verifySummary, normalizeSync, formatDuration, exportParams, pageInfo, distinctRoles, filterSummary, isSimulatedSync, AUDIT_PAGE_SIZE } from './lib/audit-logic.js';
 
 addMessages('en', en); addMessages('hi', hi);
 
@@ -48,7 +48,8 @@ export default {
     const wrap = h('section', { class: 'g-page' });
     const verifyHost = h('div', { 'aria-live': 'polite' });
     const panel = h('div', { class: 'g-stack' });
-    const state = { tab: 'activity', filters: { action: 'ALL', user: '', q: '', since: '' }, rows: [], filtered: [] };
+    const blankFilters = () => ({ action: 'ALL', user: '', role: 'ALL', q: '', since: '', until: '' });
+    const state = { tab: 'activity', filters: blankFilters(), rows: [], filtered: [], offset: 0, total: 0 };
 
     // ---- verify ----
     const renderVerify = (r, loading) => {
@@ -68,10 +69,21 @@ export default {
     };
 
     // ---- activity ----
+    const goPage = (off) => { state.offset = off; activityView(); };
+    const pager = () => {
+      const pg = pageInfo(state.total, state.offset, AUDIT_PAGE_SIZE, state.rows.length);
+      if (pg.total <= AUDIT_PAGE_SIZE) return null;
+      return h('nav', { class: 'g-audit__pager', 'aria-label': t('audit.page.of', { page: pg.page, pages: pg.pages }) },
+        button({ label: t('audit.page.prev'), variant: 'ghost', disabled: !pg.hasPrev, onClick: () => goPage(pg.prevOffset) }),
+        h('span', { class: 'g-meta' }, `${t('audit.page.range', { from: formatNumber(pg.from), to: formatNumber(pg.to), total: formatNumber(pg.total) })} · ${t('audit.page.of', { page: pg.page, pages: pg.pages })}`),
+        button({ label: t('audit.page.next'), variant: 'ghost', disabled: !pg.hasNext, onClick: () => goPage(pg.nextOffset) }));
+    };
     const loadRows = async () => {
       const f = state.filters;
-      const res = await api.auditLogs(buildAuditParams(f));
+      const res = await api.auditLogs(buildAuditParams({ ...f, offset: state.offset }));
       state.rows = Array.isArray(res) ? res : (res?.logs || []);
+      state.total = Number.isFinite(Number(res?.total)) ? Number(res.total) : state.rows.length;
+      if (Number.isFinite(Number(res?.offset))) state.offset = Number(res.offset);
       state.filtered = filterAuditRows(state.rows, f);
     };
     const activityView = async () => {
@@ -81,15 +93,20 @@ export default {
       const user = input({ name: 'user', value: state.filters.user });
       const q = input({ name: 'q', type: 'search', value: state.filters.q });
       const since = input({ name: 'since', type: 'date', value: state.filters.since });
+      const until = input({ name: 'until', type: 'date', value: state.filters.until });
+      const roleOpts = distinctRoles(state.rows.concat(state.filters.role !== 'ALL' ? [{ user_role: state.filters.role }] : []));
+      const role = select({ name: 'role', options: [{ value: 'ALL', label: t('audit.filter.allRoles') }, ...roleOpts.map((r) => ({ value: r, label: r }))], value: state.filters.role });
       const form = h('form', { class: 'g-audit__filters', onSubmit: (ev) => {
         ev.preventDefault();
-        state.filters = { action: act.value, user: user.value, q: q.value, since: since.value };
+        state.filters = { action: act.value, user: user.value, role: role.value, q: q.value, since: since.value, until: until.value };
+        state.offset = 0;
         activityView();
       } },
       field({ label: t('audit.filter.action'), input: act }), field({ label: t('audit.filter.user'), input: user }),
-      field({ label: t('audit.filter.q'), input: q }), field({ label: t('audit.filter.since'), input: since }),
+      field({ label: t('audit.filter.role'), input: role }), field({ label: t('audit.filter.q'), input: q }),
+      field({ label: t('audit.filter.since'), input: since }), field({ label: t('audit.filter.until'), input: until }),
       h('div', { class: 'g-audit__apply' }, button({ label: t('audit.filter.apply'), variant: 'primary', type: 'submit' }),
-        button({ label: t('audit.filter.clear'), variant: 'ghost', onClick: () => { state.filters = { action: 'ALL', user: '', q: '', since: '' }; activityView(); } })));
+        button({ label: t('audit.filter.clear'), variant: 'ghost', onClick: () => { state.filters = blankFilters(); state.offset = 0; activityView(); } })));
       const tbl = table({
         caption: t('audit.table.caption'),
         columns: [
@@ -97,14 +114,15 @@ export default {
           { key: 'user_name', label: t('audit.col.user'), render: userCell },
           { key: 'action', label: t('audit.col.action'), render: (r) => chip({ label: actionLabel(r.action), tone: 'neutral' }) },
           { key: 'details', label: t('audit.col.details'), render: (r) => h('span', { class: 'g-audit__details' }, r.details || '') },
+          { key: 'ip_address', label: t('audit.col.ip'), render: (r) => (r.ip_address ? h('code', { class: 'g-audit__ip' }, r.ip_address) : h('span', { class: 'g-meta' }, '-')) },
         ],
         rows: state.filtered, empty: { title: t('audit.empty.title'), message: t('audit.empty.msg') },
       });
       panel.replaceChildren(
         banner({ tone: 'info', message: t('audit.legacyNote') }),
         card({ title: t('audit.filter.title') }, form),
-        h('p', { class: 'g-meta' }, t('audit.showing', { n: formatNumber(state.filtered.length) })),
-        tbl);
+        h('p', { class: 'g-meta', 'aria-live': 'polite' }, t('audit.showing', { n: formatNumber(state.filtered.length) })),
+        tbl, pager());
     };
 
     // ---- ledger ----
@@ -119,7 +137,9 @@ export default {
           columns: [
             { key: 'id', label: t('audit.col.block') },
             { key: 'timestamp', label: t('audit.col.time'), render: (r) => formatDateTime(r.timestamp) },
+            { key: 'user_name', label: t('audit.col.user'), render: userCell },
             { key: 'action', label: t('audit.col.action'), render: (r) => actionLabel(r.action) },
+            { key: 'ip_address', label: t('audit.col.ip'), render: (r) => (r.ip_address ? h('code', { class: 'g-audit__ip' }, r.ip_address) : h('span', { class: 'g-meta' }, '-')) },
             { key: 'current_hash', label: t('audit.col.hash'), render: (r) => h('code', { class: 'g-audit__hash', title: r.current_hash }, shortHash(r.current_hash, 12)) },
             { key: 'prev_hash', label: t('audit.col.prev'), render: (r) => h('code', { class: 'g-audit__hash', title: r.prev_hash }, shortHash(r.prev_hash, 12)) },
           ],
@@ -130,9 +150,9 @@ export default {
     // ---- corpus sync ----
     const syncView = async () => {
       panel.replaceChildren(skeleton({ lines: 5 }));
-      let list;
-      try { list = normalizeSync(await api.sync.history()); } catch (e) { panel.replaceChildren(errorState({ message: e?.message, requestId: e?.requestId, onRetry: syncView, retryLabel: t('state.retry') })); return; }
-      panel.replaceChildren(table({
+      let list; let sim = false;
+      try { const raw = await api.sync.history(); sim = isSimulatedSync(raw); list = normalizeSync(raw); } catch (e) { panel.replaceChildren(errorState({ message: e?.message, requestId: e?.requestId, onRetry: syncView, retryLabel: t('state.retry') })); return; }
+      panel.replaceChildren(...[sim ? banner({ tone: 'warn', message: `${t('audit.sync.simulated')}. ${t('audit.sync.simulatedNote')}` }) : null, table({
         caption: t('audit.sync.caption'),
         columns: [
           { key: 'timestamp', label: t('audit.col.time'), render: (r) => formatDateTime(r.timestamp) },
@@ -142,7 +162,7 @@ export default {
           { key: 'status', label: t('audit.col.status'), render: (r) => chip({ label: r.status === 'SUCCESS' ? t('audit.sync.success') : r.status || t('audit.sync.unknown'), tone: r.status === 'SUCCESS' ? 'primary' : 'warn' }) },
         ],
         rows: list, empty: { title: t('audit.empty.title'), message: t('audit.sync.empty') },
-      }));
+      })].filter(Boolean));
     };
 
     // ---- reports & analytics (computed client-side from the most recent 1000 rows) ----
@@ -202,7 +222,30 @@ export default {
     const tabBar = tabs({ items: [{ id: 'activity', label: t('audit.tab.activity') }, { id: 'ledger', label: t('audit.tab.ledger') }, { id: 'sync', label: t('audit.tab.sync') }, { id: 'reports', label: t('audit.tab.reports') }], active: 'activity', label: t('audit.tabs.label'), onChange: (id) => { state.tab = id; views[id](); } });
 
     const exportServer = async () => {
-      try { saveBlob(await api.auditCsv(), 'gyanam_audit_log.csv'); } catch (e) { toast(e?.message || t('audit.export.failed'), { tone: 'danger' }); }
+      try { saveBlob(await api.auditCsv(exportParams(state.filters)), 'gyanam_audit_log.csv'); } catch (e) { toast(e?.message || t('audit.export.failed'), { tone: 'danger' }); }
+    };
+    const exportExcel = async () => {
+      try { saveBlob(await api.auditCsv(exportParams(state.filters, { excel: true })), 'gyanam_audit_log_excel.csv'); } catch (e) { toast(e?.message || t('audit.export.failed'), { tone: 'danger' }); }
+    };
+    // Print report: renders the current filtered rows into a print-only layout and calls window.print().
+    const printReport = () => {
+      if (!state.filtered.length) { toast(t('audit.export.none'), { tone: 'warn' }); return; }
+      const list = filterSummary(state.filters);
+      const root = h('div', { class: 'g-printroot', role: 'document' },
+        h('h1', {}, t('audit.print.title')),
+        h('p', {}, t('audit.print.generated', { when: formatDateTime(new Date()) })),
+        h('p', {}, list.length ? t('audit.print.filters', { list: list.join('; ') }) : t('audit.print.noFilters')),
+        h('p', {}, t('audit.print.rows', { n: formatNumber(state.filtered.length), total: formatNumber(state.total) })),
+        h('table', { class: 'g-printroot__table' },
+          h('thead', {}, h('tr', {}, ...['audit.col.time', 'audit.col.user', 'audit.col.action', 'audit.col.details', 'audit.col.ip'].map((k) => h('th', { scope: 'col' }, t(k))))),
+          h('tbody', {}, ...state.filtered.map((r) => h('tr', {},
+            h('td', {}, formatDateTime(r.timestamp)),
+            h('td', {}, isUserRecorded(r) ? `${r.user_name}${r.user_role ? ` (${r.user_role})` : ''}` : t('audit.userNotRecorded')),
+            h('td', {}, actionLabel(r.action)), h('td', {}, r.details || ''), h('td', {}, r.ip_address || ''))))));
+      const done = () => { root.remove(); document.body.classList.remove('g-printing'); window.removeEventListener('afterprint', done); };
+      window.addEventListener('afterprint', done);
+      document.body.append(root); document.body.classList.add('g-printing');
+      try { window.print(); } finally { setTimeout(done, 0); }
     };
     const exportFiltered = () => {
       if (!state.filtered.length) { toast(t('audit.export.none'), { tone: 'warn' }); return; }
@@ -213,7 +256,9 @@ export default {
       h('div', { class: 'g-page__head' },
         h('div', {}, h('h1', { class: 'g-page__title' }, t('audit.title')), h('p', { class: 'g-page__lede' }, t('audit.lede'))),
         h('div', { class: 'g-page__actions' },
+          button({ label: t('audit.print'), icon: 'printer', variant: 'ghost', onClick: printReport }),
           button({ label: t('audit.export.filtered'), variant: 'ghost', onClick: exportFiltered }),
+          button({ label: t('audit.export.excel'), icon: 'download', variant: 'ghost', onClick: exportExcel }),
           button({ label: t('audit.export'), icon: 'download', onClick: exportServer }),
           button({ label: t('audit.verify.btn'), variant: 'primary', onClick: verify }))),
       card({ title: t('audit.verify.title') }, verifyHost),

@@ -130,7 +130,8 @@ test('alertMarks matches only the same draft and finds citation sections', () =>
 test('intakeParams maps to exactly the backend DraftRequest keys', () => {
   const p = buildIntakeParams({ fields: { case_title: 'A v B', case_number: '1/2024', court: 'HC', petitioner: 'A', respondent: 'B', facts: 'f', statutory_provisions: 's', prayer: 'p' }, issues: 'one\ntwo', source: 'ocr' });
   const req = buildDraftRequest(normIntake(p));
-  assert.deepEqual(Object.keys(req).sort(), ['case_number', 'case_title', 'court', 'facts', 'gemini_api_key', 'issues', 'petitioner_arguments', 'respondent_arguments', 'statutory_provisions']);
+  assert.deepEqual(Object.keys(req).sort(), ['case_number', 'case_title', 'court', 'facts', 'gemini_api_key', 'issues', 'outcome', 'petitioner', 'petitioner_arguments', 'prayer', 'respondent', 'respondent_arguments', 'statutory_provisions']);
+  assert.equal(req.petitioner, 'A'); assert.equal(req.prayer, 'p');
   assert.equal(req.issues, '(A) one\n(B) two');
   assert.deepEqual(parseIssues(req.issues), ['one', 'two']);
 });

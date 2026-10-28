@@ -7,4 +7,5 @@
 .cc-sample:hover { background: var(--primary-tint); color: var(--primary); }
 .cc-out { display: flex; flex-direction: column; gap: var(--s4); }
 .cc-card--overruled { border-color: var(--danger); }
+.cc-pane { display: flex; flex-direction: column; gap: var(--s4); padding-top: var(--s4); }
 .cc-past { display: flex; flex-direction: column; gap: var(--s3); }

@@ -1,5 +1,5 @@
 // Chamber and access. Route '#/chamber' (MANAGE_USERS). Users from api.admin.users(); suspend/activate via
-// api.admin.toggleUser after a confirm dialog. The server keeps the change in memory only: labelled "until restart".
+// api.admin.toggleUser after a confirm dialog. The server persists the change (user_status table), so it survives restarts.
 import { h } from '../dom.js';
 import { api, getUser } from '../api.js';
 import { t, addMessages } from '../i18n/index.js';
@@ -11,11 +11,12 @@ import { statTile } from '../ui/stat-tile.js';
 import { banner } from '../ui/banner.js';
 import { errorState } from '../ui/error-state.js';
 import { skeleton } from '../ui/skeleton.js';
+import { modal } from '../ui/modal.js';
 import { confirmDialog } from '../ui/confirm.js';
 import { toast } from '../ui/toast.js';
 import en from '../i18n/pages/chamber.en.js';
 import hi from '../i18n/pages/chamber.hi.js';
-import { initials, isActive, summarizeUsers, isSelf, toggleId, permissionSummary, humanizePermission, humanizeRole, applyStatus } from './lib/chamber-logic.js';
+import { initials, isActive, summarizeUsers, isSelf, toggleId, permissionSummary, humanizePermission, humanizeRole, applyStatus, permissionMatrix, badgeId } from './lib/chamber-logic.js';
 
 addMessages('en', en); addMessages('hi', hi);
 
@@ -30,7 +31,28 @@ export default {
     const wrap = h('section', { class: 'g-page' });
     const body = h('div', { class: 'g-stack' }, skeleton({ lines: 6 }));
     let users = [];
-    wrap.append(h('div', { class: 'g-page__head' }, h('div', {}, h('h1', { class: 'g-page__title' }, t('chamber.title')), h('p', { class: 'g-page__lede' }, t('chamber.lede')))), body);
+    const openMatrix = () => {
+      const m = permissionMatrix(users);
+      const content = !m.roles.length ? h('p', { class: 'g-meta' }, t('chamber.matrix.empty'))
+        : h('div', { class: 'g-chamber__matrix' }, table({
+          caption: t('chamber.matrix.caption'),
+          columns: [
+            { key: 'role', label: t('chamber.matrix.role'), render: (r) => roleLabel(r.role) },
+            ...m.permissions.map((perm) => ({ key: perm, label: humanizePermission(perm), render: (r) => (m.has(r.role, perm)
+              ? h('span', { class: 'g-chamber__yes', role: 'img', 'aria-label': t('chamber.matrix.yes') }, '✓')
+              : h('span', { class: 'g-chamber__no', role: 'img', 'aria-label': t('chamber.matrix.no') }, '–')) })),
+          ],
+          rows: m.roles, empty: { title: t('chamber.matrix.empty') },
+        }));
+      const dlg = modal({ title: t('chamber.matrix.title'), body: content, actions: button({ label: t('chamber.matrix.close'), onClick: () => dlg.close() }) });
+      dlg.el.classList.add('g-chamber__matrix-dlg');
+      document.body.append(dlg.el);
+      dlg.open();
+    };
+    const refreshBtn = button({ label: t('chamber.refresh'), variant: 'ghost', onClick: () => load() });
+    const matrixBtn = button({ label: t('chamber.matrix.open'), icon: 'shield', onClick: openMatrix });
+    wrap.append(h('div', { class: 'g-page__head' }, h('div', {}, h('h1', { class: 'g-page__title' }, t('chamber.title')), h('p', { class: 'g-page__lede' }, t('chamber.lede'))),
+      h('div', { class: 'g-page__actions' }, matrixBtn, refreshBtn)), body);
 
     const toggle = async (u) => {
       const suspending = isActive(u);
@@ -56,7 +78,7 @@ export default {
       const me = getUser();
       const s = summarizeUsers(users);
       body.replaceChildren(
-        banner({ tone: 'warn', message: t('chamber.untilRestart') }),
+        banner({ tone: 'info', message: t('chamber.persists') }),
         h('div', { class: 'g-chamber__stats' },
           statTile({ label: t('chamber.stat.profiles'), value: s.total }),
           statTile({ label: t('chamber.stat.active'), value: s.active, tone: 'primary' }),
@@ -69,6 +91,7 @@ export default {
               h('span', { class: 'g-avatar', 'aria-hidden': 'true' }, initials(u.full_name)),
               h('div', {}, h('div', { class: 'g-chamber__name' }, u.full_name || u.email, isSelf(u, me) ? h('span', { class: 'g-meta' }, ` (${t('chamber.you')})`) : null),
                 h('div', { class: 'g-meta' }, u.email), u.designation ? h('div', { class: 'g-meta' }, u.designation) : null)) },
+            { key: 'badge_id', label: t('chamber.col.badge'), render: (u) => (badgeId(u) ? h('code', { class: 'g-chamber__badge' }, badgeId(u)) : h('span', { class: 'g-meta' }, t('chamber.noBadge'))) },
             { key: 'role', label: t('chamber.col.role'), render: (u) => chip({ label: roleLabel(u.role), tone: 'info' }) },
             { key: 'permissions', label: t('chamber.col.can'), render: (u) => {
               const p = permissionSummary(u);

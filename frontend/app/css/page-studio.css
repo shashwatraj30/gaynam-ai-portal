@@ -50,3 +50,23 @@
 .studio-ins__quote { margin: 0; font-size: var(--fs-body); line-height: var(--lh-body); white-space: pre-wrap; overflow-wrap: anywhere; }
 .studio-ins__sub { margin: var(--s3) 0 var(--s2); font-size: var(--fs-body); line-height: var(--lh-body); font-weight: 600; }
 .studio-ins__rows { display: flex; flex-direction: column; }
+
+/* Per-section actions, outcome control, precedent insert buttons, version history */
+.studio__sechead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2); }
+.studio__secacts { display: flex; flex-wrap: wrap; gap: var(--s1); }
+.studio__outcome { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.studio__outcome .g-input { flex: 1 1 200px; min-width: 0; }
+.studio-ins__prec { display: flex; flex-direction: column; border-bottom: 1px solid var(--line); padding-bottom: var(--s2); margin-bottom: var(--s2); }
+.studio-ins__ins { display: flex; flex-wrap: wrap; gap: var(--s1); }
+.studio-hist { display: flex; flex-direction: column; gap: var(--s3); }
+.studio-hist__bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); }
+.studio-hist__list { display: flex; flex-direction: column; }
+.studio-hist__item { display: flex; align-items: flex-start; gap: var(--s3); padding: var(--s3) 0; border-bottom: 1px solid var(--line); }
+.studio-hist__item input[type="checkbox"] { width: 24px; height: 24px; margin-top: 2px; flex: none; }
+.studio-hist__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.studio-hist__title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+.studio-hist__note { overflow-wrap: anywhere; }
+.studio-hist__sec { border-top: 1px solid var(--line); padding-top: var(--s3); }
+.studio-hist__diff { white-space: pre-wrap; overflow-wrap: anywhere; }
+.studio-hist ins { background: var(--primary-tint); color: var(--ink); text-decoration: underline; }
+.studio-hist del { background: var(--surface-2); color: var(--muted); text-decoration: line-through; }

@@ -44,3 +44,22 @@ export function applyStatus(users, id, newStatus) {
   const key = String(id).toLowerCase();
   return users.map((u) => ([u.user_id, u.email, u.username, u.badge_id].some((v) => v != null && String(v).toLowerCase() === key) ? { ...u, status: newStatus } : u));
 }
+
+/**
+ * Roles x permissions from the users payload (each user carries their role's permission list).
+ * -> {roles:[{role, count}], permissions:[...sorted], has(role, perm)}. Built only from what the server sent.
+ */
+export function permissionMatrix(users = []) {
+  const byRole = new Map();
+  for (const u of users) {
+    if (!u?.role) continue;
+    const set = byRole.get(u.role) || new Set();
+    (Array.isArray(u.permissions) ? u.permissions : []).forEach((p) => set.add(p));
+    byRole.set(u.role, set);
+  }
+  const permissions = [...new Set([...byRole.values()].flatMap((s) => [...s]))].sort();
+  const roles = [...byRole.entries()].map(([role, s]) => ({ role, count: s.size })).sort((a, b) => a.role.localeCompare(b.role));
+  return { roles, permissions, has: (role, perm) => !!byRole.get(role)?.has(perm) };
+}
+
+export function badgeId(u) { return String(u?.badge_id ?? '').trim(); }

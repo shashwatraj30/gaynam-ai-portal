@@ -7,6 +7,7 @@ import { t } from '../i18n/index.js';
 export const NAV_ITEMS = [
   { id: 'home', route: '/', labelKey: 'nav.home', icon: 'home', permission: null, match: (p) => p === '/' },
   { id: 'research', route: '/research', labelKey: 'nav.research', icon: 'search', permission: 'SEARCH', match: (p) => p.startsWith('/research') },
+  { id: 'documents', route: '/documents', labelKey: 'nav.documents', icon: 'upload', permission: ['UPLOAD_PLEADING', 'DRAFT_FULL'], match: (p) => p.startsWith('/documents') },
   { id: 'judgments', route: '/judgments/check', labelKey: 'nav.judgments', icon: 'scale', permission: ['SEARCH', 'VERIFY_CITATION'], match: (p) => p.startsWith('/judgments') },
   { id: 'matters', route: '/matters', labelKey: 'nav.matters', icon: 'folder', permission: ['DRAFT_FULL', 'UPLOAD_PLEADING'], match: (p) => p.startsWith('/matters') },
   { id: 'drafts', route: '/drafts', labelKey: 'nav.drafts', icon: 'edit', permission: 'DRAFT_FULL', match: (p) => p.startsWith('/drafts') },
@@ -32,7 +33,7 @@ export function visibleItems(can) { return NAV_ITEMS.filter((i) => allowed(i, ca
 
 export function visibleReferenceItems(can) { return REFERENCE_ITEMS.filter((i) => allowed(i, can)); }
 
-export function buildSidebar({ can, collapsed = false, onToggle } = {}) {
+export function buildSidebar({ can, collapsed = false, onToggle, user } = {}) {
   const links = new Map();
   const badges = new Map();
   const items = visibleItems(can);
@@ -74,7 +75,12 @@ export function buildSidebar({ can, collapsed = false, onToggle } = {}) {
   const brand = h('a', { class: 'g-brand', href: '#/' },
     h('span', { class: 'g-brand__mark', 'aria-hidden': 'true' }, icon('scale', 20)),
     h('span', { class: 'g-brand__name' }, t('app.name')));
-  const el = h('aside', { class: 'g-sidebar', id: 'g-sidebar' }, toggleBtn, brand, nav, h('div', { class: 'g-grow' }), refNav);
+  // Session card (expanded mode only; css hides it when collapsed): who is signed in and in which role.
+  const sName = user?.full_name || user?.email || '';
+  const session = sName ? h('div', { class: 'g-session', role: 'group', 'aria-label': t('nav.session') },
+    h('span', { class: 'g-session__name' }, sName),
+    h('span', { class: 'g-session__role' }, user?.role_title || user?.designation || t('role.unknown'))) : null;
+  const el = h('aside', { class: 'g-sidebar', id: 'g-sidebar' }, toggleBtn, brand, nav, h('div', { class: 'g-grow' }), refNav, session);
 
   function setActive(path) {
     let best = null;

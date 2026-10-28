@@ -113,7 +113,7 @@ def test_ocr_response_has_source_field(client, hdr):
                     headers=hdr["Clerk"])
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["source"] in {"digital_text", "ocr", "vlm", "canned_sample", "fallback"}
+    assert body["source"] in {"digital_text", "ocr", "vlm", "canned_sample", "failed"}
     assert body["original_filename"] == "brief.txt" and body["stored_filename"].endswith(".txt")
 
 
@@ -124,17 +124,22 @@ def test_ocr_failure_is_labelled_fallback(client, hdr, monkeypatch):
         raise RuntimeError("ocr down")
     monkeypatch.setattr(server, "process_scanned_brief", boom)
     r = client.post("/api/ocr/process_brief", files={"file": ("scan.png", b"\x89PNG....", "image/png")}, headers=hdr["Clerk"])
-    assert r.status_code == 200 and r.json()["source"] == "fallback"
+    body = r.json()
+    assert r.status_code == 200 and body["source"] == "failed" and body["success"] is False
+    md = body["metadata"]
+    assert md["case_title"] == "" and md["facts_summary"] == "" and "Samir" not in str(body)
 
 
 # ---------------- audit filters ----------------
 def _audit(client, h, **params):
     r = client.get("/api/audit_logs", params=params, headers=h)
     assert r.status_code == 200, r.text
-    return r.json()
+    body = r.json()
+    assert {"logs", "total", "offset"} <= set(body) and body["total"] >= len(body["logs"])
+    return body["logs"]
 
 
-def test_audit_default_shape_is_list_of_50(client, hdr):
+def test_audit_default_shape_is_page_of_50(client, hdr):
     rows = _audit(client, hdr["Auditor"])
     assert isinstance(rows, list) and 0 < len(rows) <= 50
     assert {"id", "timestamp", "user_name", "user_role", "action", "details", "ip_address"} <= set(rows[0])
@@ -251,13 +256,13 @@ def test_drafting_reads_forbidden_for_student_and_auditor(client, hdr, path):
 
 
 # ---------------- misc ----------------
-def test_status_endpoint_and_fixture_size(client):
-    d = client.get("/api/status").json()
+def test_status_endpoint_and_fixture_size(client, hdr):
+    d = client.get("/api/status", headers=hdr["Student"]).json()
     assert d["status"] == "ONLINE" and d["total_judgments_indexed"] == 300
 
 
-def test_fixture_has_two_overruled_pairs(client):
-    d = client.get("/api/status").json()
+def test_fixture_has_two_overruled_pairs(client, hdr):
+    d = client.get("/api/status", headers=hdr["Student"]).json()
     assert {s["precedent_status"]: s["c"] for s in d["status_distribution"]}["OVERRULED"] == 2
 
 

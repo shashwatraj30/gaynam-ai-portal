@@ -19,9 +19,11 @@ import { skeleton } from '../ui/skeleton.js';
 import { errorState } from '../ui/error-state.js';
 import { banner } from '../ui/banner.js';
 import { confirmDialog } from '../ui/confirm.js';
+import { modal } from '../ui/modal.js';
+import { textarea } from '../ui/form.js';
 import { toast } from '../ui/toast.js';
 import { statusChip } from './lib/draft-ui.js';
-import { SECTION_KEYS, normalizeSections, joinSections, classifyConflict, summarizeVerification, engineKind } from './lib/studio-logic.js';
+import { SECTION_KEYS, normalizeSections, joinSections, classifyConflict, summarizeVerification, engineKind, validateReason, isReasonRequired, returnReasonFor } from './lib/studio-logic.js';
 import { STEPS, stepperCurrent, buildPreChecks, checksPending, attentionCount, approvalGate, exportFileName, sha256Hex } from './lib/review-logic.js';
 
 addMessages('en', dEn); addMessages('hi', dHi); addMessages('en', en); addMessages('hi', hi);
@@ -90,9 +92,10 @@ async function render({ id }, ctx) {
     catch (e) { toast(e?.message || t('state.error'), { tone: 'danger' }); }
     finally { R.busy = false; paintSign(); }
   }
-  async function setStatus(to) {
-    const r = await api.updateDraftStatus(id, to);
+  async function setStatus(to, extra = {}) {
+    const r = await api.updateDraftStatus(id, to, { ...extra, version: R.d?.version });
     R.status = normalizeDraftStatus(r.status);
+    if (R.d) { R.d.status = R.status; if (r.version != null) R.d.version = r.version; if (extra.reason) R.d.last_return_reason = extra.reason; }
     paintAll();
   }
   async function act(gate) {
@@ -113,10 +116,36 @@ async function render({ id }, ctx) {
       if (blob) saveBlob(blob, R.fileName);
     } catch (e) { fail(e); } finally { R.busy = false; paintSign(); }
   }
+  /** Modal with a required reason (min 5 chars). Resolves the trimmed reason, or null when cancelled. */
+  function askReason() {
+    return new Promise((resolve) => {
+      let result = null;
+      const ta = textarea({ id: 'review-return-reason', rows: 4, 'aria-describedby': 'review-return-hint review-return-err', 'aria-required': 'true' });
+      const err = h('p', { id: 'review-return-err', class: 'review__reasonerr', role: 'alert' });
+      const submit = () => {
+        const v = validateReason(ta.value);
+        if (!v.ok) { err.textContent = t('review.return.reasonShort'); ta.setAttribute('aria-invalid', 'true'); ta.focus(); return; }
+        result = v.reason; dlg.close();
+      };
+      const cancelBtn = button({ label: t('review.return.cancel'), variant: 'secondary', onClick: () => dlg.close() });
+      const okBtn = button({ label: t('review.return'), variant: 'danger', onClick: submit });
+      const dlg = modal({
+        title: t('review.return.title'),
+        body: h('div', { class: 'review__reasonbox' }, h('p', {}, t('review.return.msg')),
+          h('label', { class: 'g-label', for: 'review-return-reason' }, t('review.return.reason')),
+          ta, h('p', { id: 'review-return-hint', class: 'g-meta' }, t('review.return.reasonHint')), err),
+        actions: [cancelBtn, okBtn], initialFocus: () => ta, onClose: () => resolve(result),
+      });
+      dlg.open();
+    });
+  }
   async function giveBack() {
-    if (!(await confirmDialog({ title: t('review.return.title'), message: t('review.return.msg'), confirmLabel: t('review.return'), tone: 'danger' }))) return;
+    const reason = await askReason();
+    if (reason == null) return;
     R.busy = true; paintSign();
-    try { await setStatus('RETURNED'); toast(t('review.return.done'), { tone: 'primary' }); } catch (e) { fail(e); } finally { R.busy = false; paintSign(); }
+    try { await setStatus('RETURNED', { reason }); toast(t('review.return.done'), { tone: 'primary' }); }
+    catch (e) { if (isReasonRequired(e)) toast(t('review.return.reasonServer'), { tone: 'danger' }); else fail(e); }
+    finally { R.busy = false; paintSign(); }
   }
   async function fail(e) {
     const kind = classifyConflict(e);
@@ -139,7 +168,10 @@ async function render({ id }, ctx) {
       h('div', { class: 'g-page__actions' }, statusChip(R.status), button({ label: t('review.backToStudio'), variant: 'ghost', href: `#/drafts/${id}` }))));
     clear(stepHost);
     stepHost.append(stepper({ steps: STEPS.map((s) => ({ id: s, label: draftStatusChip(s).label })), current: stepperCurrent(R.status) }));
-    if (R.status === 'RETURNED') stepHost.append(banner({ tone: 'warn', message: t('review.returnedNote') }));
+    if (R.status === 'RETURNED') {
+      const why = returnReasonFor({ status: R.status, last_return_reason: R.d?.last_return_reason });
+      stepHost.append(banner({ tone: 'warn', message: t('review.returnedNote') + (why ? ` ${t('studio.returned.banner', { reason: why })}` : '') }));
+    }
   }
   function paintTiles() {
     clear(tiles);

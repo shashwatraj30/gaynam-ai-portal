@@ -3,3 +3,10 @@
 .g-chamber__person { display: flex; align-items: center; gap: var(--s3); min-width: 220px; }
 .g-chamber__name { font-weight: 600; }
 .g-chamber__perms { max-width: 40ch; }
+.g-chamber__badge { font-size: var(--fs-meta); background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+.g-chamber__matrix { overflow-x: auto; max-width: 100%; }
+.g-chamber__matrix .g-table th, .g-chamber__matrix .g-table td { text-align: center; }
+.g-chamber__matrix .g-table th:first-child, .g-chamber__matrix .g-table td:first-child { text-align: left; }
+.g-chamber__yes { color: var(--primary); font-weight: 700; }
+.g-chamber__no { color: var(--muted); }
+.g-chamber__matrix-dlg .g-modal__panel { max-width: min(96vw, 1100px); }

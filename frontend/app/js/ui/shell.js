@@ -9,6 +9,7 @@ import { buildSidebar } from './sidebar.js';
 import { buildTopbar } from './topbar.js';
 import { canPreview, effectiveCan, loadPreview, savePreview, clearPreview } from './role-preview-logic.js';
 import { buildPreviewBanner } from './role-preview.js';
+import { loadTheme, applyTheme } from '../pages/lib/settings-logic.js';
 import { load as loadSidebarState, save as saveSidebarState, toggle as toggleSidebarState } from './sidebar-state.js';
 
 const loaded = new Map();
@@ -29,6 +30,8 @@ async function optional(path) {
 }
 
 export function mountShell(root, { onSignOut, onToast } = {}) {
+  applyTheme(loadTheme()); // stored Light/Dark/System choice
+  let viewCan = can;
   let sidebar; let topbar; let palette = null; let active = '/'; let crumbs = []; let historyFn = null;
   const badges = {};
   let sidebarState = loadSidebarState();
@@ -78,9 +81,9 @@ export function mountShell(root, { onSignOut, onToast } = {}) {
   function build() {
     // Preview is honoured only for a signed-in user whose real role is the top admin role; otherwise (e.g. sign-out) it resets.
     if (previewRole && !canPreview(getUser())) { previewRole = clearPreview(); }
-    const viewCan = effectiveCan(can, getUser(), previewRole); // display-only wrapper
+    viewCan = effectiveCan(can, getUser(), previewRole); // display-only wrapper
     renderPreviewBanner();
-    sidebar = buildSidebar({ can: viewCan, collapsed: sidebarState === 'collapsed', onToggle: toggleSidebar });
+    sidebar = buildSidebar({ can: viewCan, collapsed: sidebarState === 'collapsed', onToggle: toggleSidebar, user: getUser() || {} });
     topbar = buildTopbar({ user: getUser() || {}, can: viewCan, preview: { role: previewRole, onChange: setPreview }, onMenu: () => setNav(!shell.classList.contains('g-shell--nav-open')), onOpenPalette: openPalette, onSignOut, onToast });
     sidebar.el.addEventListener('click', (e) => { if (e.target.closest('a')) setNav(false); });
     sidebar.setActive(active);
@@ -119,7 +122,7 @@ export function mountShell(root, { onSignOut, onToast } = {}) {
     const mod = await optional('./search-palette.js');
     if (!mod?.searchPalette) return;
     try {
-      palette = mod.searchPalette({ commands: paletteCommands() });
+      palette = mod.searchPalette({ commands: paletteCommands(), dynamic: (q) => mod.dynamicCommands(q, { can: viewCan, tr: t, go: (hash) => { location.hash = hash; } }) });
     } catch (e) { console.warn('shell: searchPalette failed', e); }
   })();
 

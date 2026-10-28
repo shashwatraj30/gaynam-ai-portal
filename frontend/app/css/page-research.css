@@ -53,3 +53,15 @@
 @media (max-width: 480px) {
   .rs-ask, .rs-res { padding: var(--s4); }
 }
+
+/* v3: chips, tools row, saved searches, load more */
+.rs-chips { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.rs-chip { min-height: 36px; padding: 4px var(--s3); border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--surface-2); color: var(--ink); font: 600 var(--fs-chip)/var(--lh-chip) var(--font-sans); cursor: pointer; }
+.rs-chip:hover { background: var(--primary-tint); color: var(--primary); }
+.rs-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.rs-tools { display: flex; flex-wrap: wrap; gap: var(--s3); align-items: flex-end; }
+.rs-tools .g-field { min-width: 180px; }
+.rs-tools .g-btn { min-height: 44px; }
+.rs-more { display: flex; justify-content: center; }
+.rs-saved { display: flex; align-items: flex-start; gap: var(--s1); }
+.rs-saved .rs-hist__btn { flex: 1 1 auto; min-width: 0; }

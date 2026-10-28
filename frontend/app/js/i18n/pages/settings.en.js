@@ -26,4 +26,10 @@ export default {
   'notfound.body': 'The address may be mistyped or the page may have moved.',
   'system.goHome': 'Go to Home',
   'system.goBack': 'Go back',
+  'settings.theme': 'Theme',
+  'settings.theme.label': 'Colour theme',
+  'settings.theme.system': 'System',
+  'settings.theme.light': 'Light',
+  'settings.theme.dark': 'Dark',
+  'settings.theme.hint': 'System follows your device setting.',
 };

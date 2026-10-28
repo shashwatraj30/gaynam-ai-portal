@@ -4,3 +4,4 @@
 .drafts__name { font-weight: 600; color: var(--ink); }
 .drafts .g-field { max-width: 420px; }
 .drafts .g-tabs { flex-wrap: wrap; }
+.drafts__acts { display: flex; flex-wrap: wrap; gap: var(--s1); }

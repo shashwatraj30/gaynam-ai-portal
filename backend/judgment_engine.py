@@ -412,6 +412,47 @@ def search_relevant_precedents(query: str, limit: int = 6) -> List[Dict[str, Any
         
     return top_precedents
 
+SECTION_KEYS = [
+    "section_1_case_title", "section_2_case_number", "section_3_introduction",
+    "section_4_brief_facts", "section_5_submissions_petitioner", "section_6_submissions_respondent",
+    "section_7_issues_framed", "section_8_statutory_provisions", "section_9_evidence_analysis",
+    "section_10_applicable_principles", "section_11_discussion_reasoning", "section_12_application_of_law",
+    "section_13_findings_on_issues", "section_14_conclusion_disposition", "section_15_citations_authorities",
+]
+OUTCOME_PLACEHOLDER = "[Outcome to be decided by the Bench]"
+
+
+def _wanted_keys(only_sections: Optional[List[int]]) -> List[str]:
+    """Section numbers (1..15) -> canonical keys, in order. None / empty -> all 15."""
+    if not only_sections:
+        return list(SECTION_KEYS)
+    nums = set()
+    for n in only_sections:
+        try:
+            n = int(n)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= n <= 15:
+            nums.add(n)
+    return [SECTION_KEYS[n - 1] for n in sorted(nums)] or list(SECTION_KEYS)
+
+
+def _authority_line(a: Any) -> str:
+    """One display line for a pinned authority (dict from the bench brief / document pins, or plain text)."""
+    if isinstance(a, dict):
+        title = str(a.get("title") or a.get("case_title") or "").strip()
+        cit = str(a.get("citation") or "").strip()
+        court = str(a.get("court") or "").strip()
+        status = str(a.get("status") or a.get("precedent_status") or "").strip()
+        line = title + (f" — {cit}" if cit else "")
+        if court:
+            line += f" [{court}]"
+        if status:
+            line += f" — Status: {status}"
+        return line.strip()
+    return str(a or "").strip()
+
+
 def generate_15_section_judgment(
     case_title: str,
     case_number: str,
@@ -421,9 +462,18 @@ def generate_15_section_judgment(
     respondent_arguments: str,
     issues: str,
     statutory_provisions: str,
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
+    only_sections: Optional[List[int]] = None,
+    current: Optional[Dict[str, Any]] = None,
+    outcome: Optional[str] = None,
+    authorities: Optional[List[Any]] = None,
 ) -> Dict[str, Any]:
-    
+    wanted = _wanted_keys(only_sections)
+    partial = len(wanted) < len(SECTION_KEYS)
+    outcome = (outcome or "").strip() or None
+    pinned_lines = [l for l in (_authority_line(a) for a in (authorities or [])) if l]
+    context_sections = {k: v for k, v in (current or {}).items() if k in SECTION_KEYS and k not in wanted and str(v or "").strip()}
+
     # 1. Retrieve binding authorities prioritizing Larger / Upper Benches
     search_query = f"{issues} {statutory_provisions} {facts[:200]}"
     retrieved_precedents = search_relevant_precedents(search_query, limit=5)
@@ -470,18 +520,22 @@ def generate_15_section_judgment(
                 'status': p['precedent_status']
             } for p in active_precedents], indent=2)}
             
+            PINNED AUTHORITIES (chosen by the Bench; treat as preferred authorities, cite them and list them in Section 15):
+            {json.dumps(pinned_lines, indent=2) if pinned_lines else '(none)'}
+
+            OUTCOME DIRECTED BY THE BENCH: {outcome or 'NOT STATED. Do not decide the outcome; leave the operative disposition as a placeholder for the Bench.'}
+            {('SECTIONS TO GENERATE (ONLY THESE KEYS): ' + ', '.join(wanted)) if partial else ''}
+            {('EXISTING TEXT OF THE OTHER SECTIONS (context only; keep consistent, do not return them):' + chr(10) + json.dumps(context_sections, indent=2)) if (partial and context_sections) else ''}
+
             CRITICAL RULES:
             1. MANDATORY BINDING CITATIONS: You MUST strictly cite and apply the provided binding authorities ({', '.join([p['title'] for p in active_precedents[:3]]) if active_precedents else 'Supreme Court precedents'}) across Section 9, 10, 11, 12, and 15.
                NEVER cite unrelated civil/commercial matters, negotiable instruments/cheque bounce cases (such as Rangappa), or general constitutional privacy cases (such as Puttaswamy) unless specifically charged in this case.
             2. In Section 15 ("section_15_citations_authorities"), list the provided binding authorities with their exact citations, benches, and active precedent status.
             3. ACCORD HIGHEST PRECEDENTIAL WEIGHT to the primary binding authority ({primary_authority['title'] if primary_authority else 'Supreme Court of India'}) under Article 141.
-            4. You MUST generate all 15 canonical sections as required by National Law University, Jodhpur.
-            5. Return your output STRICTLY in valid JSON format with keys:
-               "section_1_case_title", "section_2_case_number", "section_3_introduction",
-               "section_4_brief_facts", "section_5_submissions_petitioner", "section_6_submissions_respondent",
-               "section_7_issues_framed", "section_8_statutory_provisions", "section_9_evidence_analysis",
-               "section_10_applicable_principles", "section_11_discussion_reasoning", "section_12_application_of_law",
-               "section_13_findings_on_issues", "section_14_conclusion_disposition", "section_15_citations_authorities"
+            4. {('Generate ONLY the requested sections listed above.' if partial else 'You MUST generate all 15 canonical sections as required by National Law University, Jodhpur.')}
+            5. Never decide the outcome yourself: follow the OUTCOME DIRECTED BY THE BENCH above, or leave a placeholder.
+            6. Return your output STRICTLY in valid JSON format with keys:
+               {', '.join('"' + k + '"' for k in wanted)}
             """
             
             # Models retire often: override with GYANAM_GEMINI_MODELS (comma separated) instead of editing code.
@@ -538,22 +592,28 @@ def generate_15_section_judgment(
                     elif isinstance(sec_v, dict):
                         parsed_json[sec_k] = "\n".join([f"• {k.replace('_', ' ').title()}: {v}" for k, v in sec_v.items()])
 
-                if active_precedents:
+                if (active_precedents or pinned_lines) and "section_15_citations_authorities" in wanted:
                     valid_auth_lines = []
+                    for pl in pinned_lines:
+                        valid_auth_lines.append(f"[{len(valid_auth_lines) + 1}] {pl} [PINNED BY THE BENCH]")
+                    pinned_low = " ".join(pinned_lines).lower()
                     for idx, p in enumerate(active_precedents[:5], 1):
+                        if (p.get("title") or "").lower() in pinned_low:
+                            continue
                         p_cit = p.get('citation') or p.get('cnr_number') or 'Official Record'
                         p_court = p.get('court') or 'Supreme Court of India'
                         p_bench = p.get('bench_label') or 'Division Bench (2 Judges)'
                         p_ratio = p.get('ratio_decidendi') or p.get('headnote') or ''
                         p_ratio_snippet = f"\n   Binding Ratio: {p_ratio[:160]}..." if p_ratio else ""
                         is_pri = " [★ PRIMARY BINDING AUTHORITY - ARTICLE 141]" if p.get("is_primary_binding") or idx == 1 else ""
-                        valid_auth_lines.append(f"[{idx}] {p['title']} — {p_cit} [{p_court} • {p_bench}]{is_pri} — Status: ACTIVE PRECEDENT.{p_ratio_snippet}")
+                        valid_auth_lines.append(f"[{len(valid_auth_lines) + 1}] {p['title']} — {p_cit} [{p_court} • {p_bench}]{is_pri} — Status: ACTIVE PRECEDENT.{p_ratio_snippet}")
                     
                     parsed_json["section_15_citations_authorities"] = (
                         "AUTHORITIES CITED & VERIFIED PRECEDENTS (RANKED BY UPPER BENCH PRIORITY - ARTICLE 141):\n\n" +
                         "\n\n".join(valid_auth_lines)
                     )
                 
+                parsed_json = {k: parsed_json[k] for k in wanted if k in parsed_json}
                 full_draft_text = "\n".join([str(v) for v in parsed_json.values()])
                 verified_citations = verify_all_text_citations(full_draft_text)
                 
@@ -618,15 +678,18 @@ def generate_15_section_judgment(
     primary_cit = primary_authority['citation'] if primary_authority else default_cit
     primary_ratio = primary_authority['ratio_decidendi'] if primary_authority else default_ratio
 
-    authorities_list = []
+    authorities_list = [f"• {pl} [PINNED BY THE BENCH]" for pl in pinned_lines]
+    pinned_low = " ".join(pinned_lines).lower()
     if active_precedents:
         for p in active_precedents:
+            if (p.get('title') or '').lower() in pinned_low:
+                continue
             p_cit = p.get('citation') or p.get('cnr_number') or 'Official Record'
             p_court = p.get('court') or 'Supreme Court of India'
             p_bench = p.get('bench_label') or 'Division Bench (2 Judges)'
             is_pri = " [★ PRIMARY BINDING AUTHORITY - UPPER BENCH]" if p.get("is_primary_binding") else ""
             authorities_list.append(f"• {p['title']} — {p_cit} [{p_court} • {p_bench}]{is_pri} — Status: VERIFIED ACTIVE PRECEDENT.")
-    else:
+    elif not pinned_lines:
         authorities_list.append(f"• {primary_case} — {primary_cit} [Supreme Court of India • {primary_bench_label}] [★ PRIMARY BINDING AUTHORITY] — Status: VERIFIED ACTIVE PRECEDENT.")
         if is_motor_case:
             authorities_list.append("• Mohammed Aynuddin @ Miyam v. State of Andhra Pradesh — 2000INSC361 / (2000) 7 SCC 72 [Supreme Court of India • Division Bench (2 Judges)] — Status: VERIFIED ACTIVE PRECEDENT.")
@@ -639,12 +702,13 @@ def generate_15_section_judgment(
         f"(B) What relief or operative direction is warranted in accordance with binding precedent under Article 141?"
     )
 
-    if is_criminal_matter:
-        sec_13_text = "11. In light of the comprehensive analysis above, this Court records its findings:\n- As to Issue (A): Answered in the AFFIRMATIVE in favor of the prosecution/complainant.\n- As to Issue (B): Answered in the AFFIRMATIVE, holding that cognizable offences are prima facie made out and trial must proceed in accordance with law."
-        sec_14_text = f"12. In the result, the proceedings are DISPOSED OF with a direction for expeditious framing of formal charges under {statutory_provisions}. The matter is committed for trial in accordance with law. All pending applications stand disposed of accordingly."
+    # The engine never predetermines the outcome: use the Bench's direction or a neutral placeholder.
+    if outcome:
+        sec_13_text = f"11. In light of the analysis above, this Court records its findings on the framed issues, consistent with the outcome directed by the Bench: {outcome}."
+        sec_14_text = f"12. In the result, {outcome}, under {statutory_provisions}. All pending applications stand disposed of accordingly."
     else:
-        sec_13_text = "11. In light of the comprehensive constitutional and statutory analysis above, this Court records its definitive findings:\n- As to the Framed Issues: Answered in the AFFIRMATIVE in favor of the Petitioner, holding that the impugned action suffers from fatal procedural and statutory infirmity."
-        sec_14_text = f"12. In the result, the Petition is ALLOWED. The impugned order and consequential proceedings are hereby QUASHED and SET ASIDE under {statutory_provisions}, with all consequential reliefs restored to the Petitioner. No order as to costs."
+        sec_13_text = f"11. Findings on each framed issue: {OUTCOME_PLACEHOLDER}"
+        sec_14_text = f"12. In the result: {OUTCOME_PLACEHOLDER}"
 
     sections = {
         "section_1_case_title": f"IN THE {court.upper()}\n{case_title}",
@@ -655,15 +719,16 @@ def generate_15_section_judgment(
         "section_6_submissions_respondent": f"4. Per contra, learned counsel appearing on behalf of the Respondent / Defence countered the submissions, contending that:\n(i) {respondent_arguments};\n(ii) The proceedings suffer from no jurisdictional error; and\n(iii) No ground is made out for adverse interference.",
         "section_7_issues_framed": f"5. On the basis of the pleadings, record, and rival contentions, the following points/issues arise for determination by this Court:\n{framed_issues_block}",
         "section_8_statutory_provisions": f"6. The statutory framework governing the controversy comprises: {statutory_provisions}.\nUnder the constitutional doctrine of Stare Decisis (Article 141 of the Constitution of India), this Court accords primary binding authority to the decision of the Larger Bench of the Supreme Court of India in {primary_case} ({primary_cit}) [{primary_bench_label}], which strictly governs the field.",
-        "section_9_evidence_analysis": f"7. Upon careful scrutiny of the pleadings, documentary record, and material placed before the Bench, the factual foundation relied upon by the Petitioner/Complainant stands corroborated by contemporaneous official records.",
+        "section_9_evidence_analysis": f"7. Upon careful scrutiny of the pleadings, documentary record, and material placed before the Bench, the factual foundation relied upon by the parties is set out above; the Bench will record its assessment of the evidence.",
         "section_10_applicable_principles": f"8. The legal position is no longer res integra. The Hon'ble Supreme Court in the authoritative precedent of {primary_case} ({primary_cit}) enunciated the governing ratio decidendi:\n\"{primary_ratio}\"\n\nThe statutory mandate under {statutory_provisions} must be interpreted and enforced in strict conformity with this binding exposition of law.",
         "section_11_discussion_reasoning": f"9. Applying these settled legal principles to the factual matrix at hand, this Court finds that the test laid down in {primary_case} ({primary_cit}) is squarely attracted. Under Article 141 of the Constitution of India, the pronouncement of the Larger Bench binds all Courts within the territory of India.",
-        "section_12_application_of_law": f"10. When the facts established on record are tested on the anvil of {statutory_provisions} read with the ratio in {primary_case} ({primary_cit}), the conclusion is inescapable that the legal threshold is fully satisfied.",
+        "section_12_application_of_law": f"10. When the facts established on record are tested on the anvil of {statutory_provisions} read with the ratio in {primary_case} ({primary_cit}), the Bench will record whether the legal threshold is satisfied.",
         "section_13_findings_on_issues": sec_13_text,
         "section_14_conclusion_disposition": sec_14_text,
         "section_15_citations_authorities": "13. AUTHORITIES CITED & RELIED UPON (RANKED BY UPPER BENCH PRIORITY - ARTICLE 141):\n" + "\n".join(authorities_list)
     }
     
+    sections = {k: sections[k] for k in wanted}
     full_text = "\n".join(sections.values())
     verified_citations = verify_all_text_citations(full_text)
     

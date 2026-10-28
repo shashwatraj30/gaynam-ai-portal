@@ -1,8 +1,8 @@
 // Matter page: '/matters/:key' with tabs Overview / Documents / Research / Drafts / History.
 // Data: api.matter(key) -> {matter_key, case_number, title, court, drafts[], events[] (user_label), ...}.
 // Pre-B2 events have no recorded user and show "user not recorded". The topbar History button opens the same
-// history in a drawer (ctx.setHistoryHandler). Documents and Research have no per-matter data source yet: they show
-// only what the audit events contain and otherwise an honest empty state (P5).
+// history in a drawer (ctx.setHistoryHandler). Documents lists m.documents (saved Documents of the matter); Research links
+// to the search with the first confirmed document's issue (else the case number). Empty states stay honest (P5).
 import { h, clear } from '../dom.js';
 import { api } from '../api.js';
 import { t, addMessages } from '../i18n/index.js';
@@ -25,6 +25,7 @@ import hi from '../i18n/pages/matter.hi.js';
 import {
   EVENT_FILTERS, filterEvents, eventCounts, eventTitleKey, humanizeAction, groupEventsByDay, timeOf,
   userRecorded, draftHref, lastActivity, matterHeading, nextActionKey,
+  matterDocuments, documentHref, newDocumentHref, confirmedIssues, researchHref,
 } from './lib/matters-logic.js';
 import { MATTER_ACCESS } from './lib/access.js';
 
@@ -66,7 +67,8 @@ function historyView(events, { canAudit, filterLabel }) {
     });
   }
   paint();
-  root.append(events.length ? bar : null, list,
+  if (events.length) root.append(bar);
+  root.append(list,
     h('p', { class: 'mt-meta' }, t('matter.history.audit'), ' ',
       canAudit ? h('a', { href: '#/audit' }, t('matter.history.openAudit')) : null));
   return root;
@@ -134,12 +136,14 @@ async function render(params, ctx) {
       h('div', { class: 'g-page__actions' }, latest ? button({ label: reviewish ? t('matter.reviewLatest') : t('matter.openLatest'), variant: 'primary', href: draftHref(latest) }) : null)));
     if (m.is_placeholder) root.append(h('p', { class: 'mt-meta', role: 'note' }, t('matter.placeholder')));
 
+    const docs = matterDocuments(m);
+    const issues = confirmedIssues(m);
     const docEvents = filterEvents(events, 'documents');
     const resEvents = filterEvents(events, 'research');
     const items = [
       { id: 'overview', label: t('matter.tab.overview') },
-      { id: 'documents', label: t('matter.tab.documents'), badge: docEvents.length || null },
-      { id: 'research', label: t('matter.tab.research'), badge: resEvents.length || null },
+      { id: 'documents', label: t('matter.tab.documents'), badge: docs.length || null },
+      { id: 'research', label: t('matter.tab.research'), badge: issues.length || resEvents.length || null },
       { id: 'drafts', label: t('matter.tab.drafts'), badge: drafts.length },
       { id: 'history', label: t('matter.tab.history'), badge: events.length || null },
     ];
@@ -165,10 +169,33 @@ async function render(params, ctx) {
         card({ title: t('matter.recent'), actions: events.length ? button({ label: t('matter.seeAll'), variant: 'ghost', onClick: () => tabBar.select('history') }) : null },
           events.length ? timeline(groupEventsByDay(events).flatMap((g) => g.events).slice(0, 4).map((e) => ({ ...eventNode(e), time: [formatDate(e.timestamp), timeOf(e.timestamp)].filter(Boolean).join(' ') })))
             : emptyState({ title: t('matter.history.empty.title'), message: t('matter.history.empty.msg') }))),
-      documents: () => eventsSection(docEvents, { title: t('matter.documents.title'), message: t('matter.documents.msg'),
-        action: ctx.can('UPLOAD_PLEADING') ? button({ label: t('matter.documents.action'), href: '#/matters/new' }) : null }),
-      research: () => eventsSection(resEvents, { title: t('matter.research.title'), message: t('matter.research.msg'),
-        action: ctx.can('SEARCH') ? button({ label: t('matter.research.action'), href: `#/research${m.case_number ? `?q=${encodeURIComponent(m.case_number)}` : ''}` }) : null }),
+      documents: () => {
+        const add = ctx.can('UPLOAD_PLEADING') ? button({ label: t('matter.documents.upload'), variant: 'primary', icon: 'upload', href: newDocumentHref(params.key) }) : null;
+        const lib = ctx.can('UPLOAD_PLEADING') || ctx.can('DRAFT_FULL') ? button({ label: t('matter.documents.library'), variant: 'ghost', href: '#/documents' }) : null;
+        if (!docs.length) {
+          return h('div', { class: 'mt-panel' }, emptyState({ title: t('matter.documents.title'), message: t('matter.documents.msg'), action: add }),
+            docEvents.length ? eventsSection(docEvents, {}) : null);
+        }
+        return h('div', { class: 'mt-panel' },
+          h('div', { class: 'g-page__actions' }, add, lib),
+          table({
+            caption: t('matter.tab.documents'),
+            columns: [
+              { key: 'title', label: t('matter.col.document'), render: (d) => h('a', { href: documentHref(d) }, d.title || d.original_name || t('matter.documents.untitled')) },
+              { key: 'doc_type', label: t('matter.col.type'), render: (d) => d.doc_type || '—' },
+              { key: 'status', label: t('matter.col.status'), render: (d) => chip({ label: d.status === 'CONFIRMED' ? t('matter.documents.confirmed') : d.status === 'READ' ? t('matter.documents.read') : String(d.status || '—'), tone: d.status === 'CONFIRMED' ? 'primary' : 'neutral' }) },
+              { key: 'created_at', label: t('matter.col.created'), render: (d) => formatDate(d.created_at) },
+            ],
+            rows: docs,
+            empty: { title: t('matter.documents.title') },
+          }));
+      },
+      research: () => h('div', { class: 'mt-panel' },
+        issues.length ? card({ title: t('matter.research.issues') },
+          h('ol', { class: 'mt-issues' }, ...issues.map((x) => h('li', {}, x)))) : null,
+        issues.length ? null : h('p', { class: 'mt-meta' }, t('matter.research.noIssues')),
+        ctx.can('SEARCH') ? h('div', { class: 'g-page__actions' }, button({ label: issues.length ? t('matter.research.actionIssue') : t('matter.research.action'), variant: 'primary', href: researchHref(m) })) : null,
+        resEvents.length ? eventsSection(resEvents, {}) : emptyState({ title: t('matter.research.title'), message: t('matter.research.msg') })),
       drafts: () => draftsTable(drafts),
       history: () => historyView(events, { canAudit, filterLabel: t('matter.history.filters') }),
     };

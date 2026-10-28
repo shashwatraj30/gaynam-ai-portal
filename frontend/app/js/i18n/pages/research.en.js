@@ -25,8 +25,16 @@ const en = {
   'rs.noneTitle': 'No authorities found', 'rs.noneMsg': 'Try broader terms or remove a filter.', 'rs.noneFiltered': 'Your year or section filters removed every result. Loosen them.',
   'rs.count': 'Showing {shown} of {total} authorities, ranked by bench strength; overruled decisions last.', 'rs.filtered': '({n} filters active)',
   'rs.sourceTitle': 'Source', 'rs.sourceEmpty': 'Select an authority to see its metadata and the source PDF here.', 'rs.sourceSub': 'Source for the selected authority',
-  'rs.checks': 'Checks', 'rs.chk.found': 'Judgment exists in the corpus', 'rs.chk.overruled': 'Overruled?', 'rs.chk.quote': 'Quote-to-paragraph match', 'rs.chk.later': 'Not checked yet',
+  'rs.checks': 'Checks', 'rs.chk.found': 'Judgment exists in the corpus', 'rs.chk.overruled': 'Overruled?', 'rs.chk.quote': 'Quote-to-paragraph match', 'rs.chk.later': 'Needs judgment text (paragraphs not loaded yet)',
   'rs.detailFailed': 'The source PDF could not be loaded.',
+  'rs.sortLabel': 'Sort by', 'rs.sort.bench': 'Bench strength', 'rs.sort.relevance': 'Relevance', 'rs.sort.newest': 'Newest first', 'rs.sort.oldest': 'Oldest first',
+  'rs.loadMore': 'Load more', 'rs.loadingMore': 'Loading', 'rs.loadMoreFailed': 'Could not load more results.', 'rs.relaxed': 'No results matched your filters, so these results ignore them.',
+  'rs.saveSearch': 'Save search', 'rs.saveTitle': 'Save this search', 'rs.saveName': 'Name', 'rs.saveHint': 'The question and filters are saved with this name.', 'rs.saveConfirm': 'Save', 'rs.saveCancel': 'Cancel',
+  'rs.saveNeedName': 'Enter a name.', 'rs.saveNeedQuery': 'Run a search first.', 'rs.saveDone': 'Search saved', 'rs.saveFailed': 'Could not save the search.',
+  'rs.savedTitle': 'Saved searches', 'rs.savedEmpty': 'No saved searches yet.', 'rs.savedOpen': 'Open saved search {name}', 'rs.savedDelete': 'Delete saved search {name}', 'rs.savedDeleted': 'Saved search deleted', 'rs.savedLoadFailed': 'Saved searches could not be loaded.',
+  'rs.exportCsv': 'Export results (CSV)', 'rs.exported': 'CSV downloaded', 'rs.chipsLabel': 'Landmark and sample searches',
+  'rs.district': 'District: {d}', 'rs.briefHandoff': 'Bench brief carried into your draft',
+  'rs.total': 'Showing {shown} of {total} matching authorities', 'rs.totalUnknown': 'Showing {shown} authorities',
 };
 addMessages('en', en);
 export default en;

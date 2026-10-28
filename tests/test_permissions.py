@@ -34,12 +34,22 @@ ROUTES = [
     ("GET", "/api/audit/ledger/verify", ["VIEW_AUDIT", "VERIFY_LEDGER"], lambda: {}),
     ("GET", "/api/audit/ledger/blocks", ["VIEW_AUDIT", "VERIFY_LEDGER"], lambda: {}),
     ("POST", "/api/sync/trigger", ["MANAGE_CORPUS"], lambda: {}),
+    # v3 security changes: "any signed-in role" is expressed as SEARCH or VIEW_AUDIT (every role has one of them)
+    ("GET", "/api/dashboard_metrics", ["SEARCH", "VIEW_AUDIT"], lambda: {}),
+    ("GET", "/api/cases/recent", ["SEARCH", "VIEW_AUDIT"], lambda: {}),
+    ("POST", "/api/verify_citations", ["VERIFY_CITATION", "SEARCH"], lambda: {"json": {"text": "AIR 1973 SC 1461"}}),
+    ("GET", "/api/sync/status", ["MANAGE_CORPUS", "VIEW_AUDIT"], lambda: {}),
+    ("GET", "/api/sync/history", ["MANAGE_CORPUS", "VIEW_AUDIT"], lambda: {}),
+    ("POST", "/api/ocr/anonymize", ["UPLOAD_PLEADING"], lambda: {"json": {"text": "Call 9876543210"}}),
+    ("GET", "/api/judgment/1", ["SEARCH"], lambda: {}),
+    ("POST", "/api/search", ["SEARCH"], lambda: {"json": {"query": "bail"}}),
 ]
 
 
 @pytest.fixture(autouse=True)
 def _no_network_sync(monkeypatch):
     monkeypatch.setattr(server, "run_incremental_sync", lambda batch_size=12: {"success": True, "stubbed": True})
+    monkeypatch.setenv("GYANAM_ALLOW_LEGACY_HEADER", "0")
 
 
 def _perms(role_label):
@@ -92,6 +102,11 @@ def test_finalize_required_for_approval(client, hdr):
 
 
 # ---------------- legacy header (task 3) ----------------
+def test_legacy_header_off_by_default(client, monkeypatch):
+    monkeypatch.delenv("GYANAM_ALLOW_LEGACY_HEADER", raising=False)
+    assert client.get("/api/drafts", headers={"X-Gyanam-Legacy": "1"}).status_code == 401
+
+
 def test_legacy_header_honoured_when_allowed(client, monkeypatch):
     monkeypatch.setenv("GYANAM_ALLOW_LEGACY_HEADER", "1")
     r = client.get("/api/drafts", headers={"X-Gyanam-Legacy": "1"})
