@@ -879,7 +879,9 @@ def export_audit_csv_endpoint(
 
 # ----------------- REAL-TIME COURT SYNC DAEMON -----------------
 @app.get("/api/sync/status")
-def sync_status_endpoint(_user: Dict[str, Any] = Depends(require_any("MANAGE_CORPUS", "VIEW_AUDIT"))):
+def sync_status_endpoint(_user: Dict[str, Any] = Depends(get_current_user_from_header)):
+    # Read-only freshness indicator shown in the top bar for every signed-in role (not just
+    # MANAGE_CORPUS/VIEW_AUDIT); only the mutating /api/sync/trigger stays permission-gated.
     return get_sync_status()
 
 @app.post("/api/sync/trigger")
