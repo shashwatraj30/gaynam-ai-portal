@@ -1,0 +1,33 @@
+app = "gyanam-ai-portal"
+primary_region = "bom"
+
+[build]
+
+[env]
+  PORT = "8090"
+  GYANAM_UPLOAD_DIR = "/app/data/uploads"
+
+[[mounts]]
+  source = "gyanam_data"
+  destination = "/app/data"
+
+[http_service]
+  internal_port = 8090
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[checks]
+  [checks.health]
+    port = 8090
+    type = "http"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    path = "/api/status"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
