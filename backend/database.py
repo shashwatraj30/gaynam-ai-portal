@@ -7,11 +7,31 @@ BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
 DB_PATH = os.environ.get("GYANAM_DB_PATH") or os.path.join(PROJECT_ROOT, "data", "vidhi_legal.db")
 
-def get_connection():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+def _connect():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode = WAL;")
+    try:
+        conn.execute("PRAGMA journal_mode = WAL;")
+    except sqlite3.DatabaseError:
+        conn.close()  # release the file handle before the caller tries to delete it (esp. on Windows)
+        raise
+    return conn
+
+def get_connection():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    try:
+        conn = _connect()
+    except sqlite3.DatabaseError as e:
+        # A prior write (e.g. an interrupted upload or a killed process) left a corrupt file.
+        # There is nothing to recover from the file itself, and crash-looping on every boot is
+        # worse than starting clean -- remove it (and its WAL/SHM/journal siblings) and recreate.
+        print(f"WARNING: {DB_PATH} is corrupt ({e}); recreating a fresh database.")
+        for suffix in ("", "-wal", "-shm", "-journal"):
+            try:
+                os.remove(DB_PATH + suffix)
+            except FileNotFoundError:
+                pass
+        conn = _connect()
     conn.execute("PRAGMA synchronous = NORMAL;")
     conn.execute("PRAGMA mmap_size = 3000000000;")
     conn.execute("PRAGMA cache_size = -200000;")
