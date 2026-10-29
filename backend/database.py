@@ -6,6 +6,17 @@ from typing import List, Dict, Any, Optional
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
 DB_PATH = os.environ.get("GYANAM_DB_PATH") or os.path.join(PROJECT_ROOT, "data", "vidhi_legal.db")
+# Optional: a populated DB baked into the image at build time (see Dockerfile), used to seed an
+# empty persistent volume on first boot -- a one-time deploy-time alternative to transferring a
+# large file over a separate connection (SFTP/SSH) after the fact. Normally absent; harmless no-op.
+SEED_DB_PATH = os.environ.get("GYANAM_SEED_DB_PATH") or os.path.join(PROJECT_ROOT, "seed", "vidhi_legal.db")
+
+def _seed_if_empty():
+    if os.path.exists(SEED_DB_PATH) and not os.path.exists(DB_PATH):
+        import shutil
+        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+        print(f"Seeding database from {SEED_DB_PATH} -> {DB_PATH}")
+        shutil.copyfile(SEED_DB_PATH, DB_PATH)
 
 def _connect():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -19,6 +30,7 @@ def _connect():
 
 def get_connection():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    _seed_if_empty()
     try:
         conn = _connect()
     except sqlite3.DatabaseError as e:
