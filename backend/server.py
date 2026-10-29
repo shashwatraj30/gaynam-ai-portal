@@ -21,7 +21,7 @@ if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 import envload  # noqa: E402  (loads <project>/.env into os.environ before anything reads it)
 envload.load_env(os.path.join(PROJECT_ROOT, ".env"))
-from database import get_connection, DB_PATH, run_migrations
+from database import get_connection, DB_PATH, init_db
 from citation_verifier import verify_all_text_citations, verify_citation
 from judgment_engine import (
     generate_15_section_judgment, search_relevant_precedents,
@@ -50,7 +50,10 @@ app = FastAPI(
 app.add_exception_handler(AuthError, auth_error_handler)
 
 try:
-    run_migrations()
+    # init_db() creates the base tables (judgments, draft_judgments, audit_logs, ...) with
+    # CREATE TABLE IF NOT EXISTS, then runs the v3 migrations -- safe to call every boot, whether
+    # the DB file is the real populated one or a freshly (re)created empty one.
+    init_db()
 except Exception as _e:
     print(f"Startup migration warning: {_e}")
 
