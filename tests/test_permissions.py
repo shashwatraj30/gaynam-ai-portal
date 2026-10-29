@@ -38,7 +38,8 @@ ROUTES = [
     ("GET", "/api/dashboard_metrics", ["SEARCH", "VIEW_AUDIT"], lambda: {}),
     ("GET", "/api/cases/recent", ["SEARCH", "VIEW_AUDIT"], lambda: {}),
     ("POST", "/api/verify_citations", ["VERIFY_CITATION", "SEARCH"], lambda: {"json": {"text": "AIR 1973 SC 1461"}}),
-    ("GET", "/api/sync/status", ["MANAGE_CORPUS", "VIEW_AUDIT"], lambda: {}),
+    # Read-only freshness indicator shown to every signed-in role (top bar); any token is enough.
+    ("GET", "/api/sync/status", ["SEARCH", "VIEW_AUDIT"], lambda: {}),
     ("GET", "/api/sync/history", ["MANAGE_CORPUS", "VIEW_AUDIT"], lambda: {}),
     ("POST", "/api/ocr/anonymize", ["UPLOAD_PLEADING"], lambda: {"json": {"text": "Call 9876543210"}}),
     ("GET", "/api/judgment/1", ["SEARCH"], lambda: {}),
