@@ -346,6 +346,8 @@ def _m007_lineages(conn):
 
 def _m008_audit_indexes(conn):
     conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_logs(timestamp)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action)")
+
 
 _LEDGER_DDL = """
 CREATE TABLE IF NOT EXISTS cryptographic_audit_ledger (
