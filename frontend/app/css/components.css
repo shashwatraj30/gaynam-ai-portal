@@ -125,6 +125,11 @@ a.g-cite:hover{text-decoration:underline}
 .g-modal__title,.g-drawer__title{margin:0;font:500 var(--fs-h2)/var(--lh-h2) var(--font-serif)}
 .g-modal__body,.g-drawer__body{padding:var(--s4) var(--s6);overflow:auto;flex:1;font:400 var(--fs-body)/var(--lh-body) var(--font-sans)}
 .g-modal__actions,.g-drawer__actions{display:flex;justify-content:flex-end;gap:var(--s2);flex-wrap:wrap;padding:var(--s4) var(--s6);border-top:1px solid var(--line)}
+/* Bug 6: header and action row never shrink; only the body scrolls, so the confirm button cannot be clipped */
+.g-modal__head,.g-drawer__head,.g-modal__actions,.g-drawer__actions{flex-shrink:0}
+.g-modal__body,.g-drawer__body{flex:1;overflow:auto;min-height:0}
+.g-modal__panel{max-height:90vh;overflow:hidden}
+.g-drawer__panel{overflow:hidden}
 .g-overlay__x{font-size: calc(24px * var(--fz));padding:0 var(--s3)}
 .g-confirm__msg{margin:0;color:var(--ink-2)}
 .g-overlay--palette{align-items:flex-start;padding-top:12vh}
