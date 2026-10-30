@@ -432,6 +432,60 @@ def _m009_audit_ledger_sync(conn):
 
 
 
+def _m010_seal_hash_columns(conn):
+    """Bug 3: persist the seal fingerprint. sealed_hash / sealed_at stay NULL for drafts that were never sealed
+    (and, until migration 011 runs, for drafts sealed before this fix). sealed_hash_backfilled = 1 marks a hash
+    that was computed after the fact rather than at the moment of sealing. Idempotent (PRAGMA-guarded)."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(draft_judgments)").fetchall()}
+    if "sealed_hash" not in cols:
+        conn.execute("ALTER TABLE draft_judgments ADD COLUMN sealed_hash TEXT")
+    if "sealed_at" not in cols:
+        conn.execute("ALTER TABLE draft_judgments ADD COLUMN sealed_at TEXT")
+    if "sealed_hash_backfilled" not in cols:
+        conn.execute("ALTER TABLE draft_judgments ADD COLUMN sealed_hash_backfilled INTEGER NOT NULL DEFAULT 0")
+
+
+def _m011_backfill_seal_hash(conn):
+    """Bug 3: one-time, BEST-EFFORT backfill of sealed_hash / sealed_at for drafts already FINAL_SEALED.
+
+    TRUST LIMITATION (release notes): a draft sealed before this fix has no record of what its content was at
+    the real moment of sealing. The hash written here is computed from the draft's content AS IT IS WHEN THIS
+    MIGRATION RUNS, so it cannot prove the content was not altered between the original seal and this backfill
+    (the only guard in that window was the application-level immutability check). sealed_at is the best
+    available timestamp (latest FINAL_SEALED row in draft_versions, else the draft's date_created, else the
+    run time), not a verified seal time. Every such row is flagged sealed_hash_backfilled = 1 and the API/UI
+    present it as lower-trust than a hash captured at the moment of sealing.
+    Idempotent: only rows with sealed_hash IS NULL are touched, so a re-run changes nothing.
+    """
+    from datetime import datetime, timezone
+    from export_engine import compute_seal_hash
+
+    def iso(ts):
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                return datetime.strptime(str(ts)[:19 if fmt.endswith("%S") else 16], fmt).replace(tzinfo=timezone.utc).isoformat()
+            except ValueError:
+                continue
+        return None
+
+    rows = conn.execute("SELECT * FROM draft_judgments WHERE sealed_hash IS NULL").fetchall()
+    for r in rows:
+        d = dict(r)
+        if str(d.get("status") or "").upper() not in ("FINAL_SEALED", "SIGNED", "SEALED", "FINALIZED", "FINAL"):
+            continue
+        sealed_at = None
+        try:
+            v = conn.execute("SELECT saved_at FROM draft_versions WHERE draft_id = ? AND status IN "
+                             "('FINAL_SEALED','SIGNED','SEALED','FINALIZED','FINAL') ORDER BY id DESC LIMIT 1",
+                             (d["id"],)).fetchone()
+            sealed_at = iso(v[0]) if v else None
+        except Exception:
+            sealed_at = None
+        sealed_at = sealed_at or iso(d.get("date_created")) or datetime.now(timezone.utc).isoformat()
+        conn.execute("UPDATE draft_judgments SET sealed_hash = ?, sealed_at = COALESCE(sealed_at, ?), "
+                     "sealed_hash_backfilled = 1 WHERE id = ?", (compute_seal_hash(d), sealed_at, d["id"]))
+
+
 MIGRATIONS = [
     ("001_draft_columns", migrate_draft_columns),
     ("002_documents", _m002_documents),
@@ -442,6 +496,8 @@ MIGRATIONS = [
     ("007_lineages", _m007_lineages),
     ("008_audit_indexes", _m008_audit_indexes),
     ("009_audit_ledger_sync", _m009_audit_ledger_sync),
+    ("010_seal_hash_columns", _m010_seal_hash_columns),
+    ("011_backfill_seal_hash", _m011_backfill_seal_hash),
 ]
 
 

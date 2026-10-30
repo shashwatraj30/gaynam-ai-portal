@@ -36,7 +36,7 @@ from auth import (
 )
 from ocr_engine import process_scanned_brief, anonymize_pii, clean_ocr_text
 from court_sync_daemon import run_incremental_sync, get_sync_status, get_sync_history
-from export_engine import export_judgment_to_docx, render_printable_html
+from export_engine import export_judgment_to_docx, render_printable_html, seal_info
 from audit_dpdp import record_tamper_evident_event, verify_ledger_integrity, get_ledger_blocks
 from audit_utils import resync_pending_ledger
 import drafts_service as drafts_svc
@@ -98,6 +98,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Gyanam-Sealed", "X-Gyanam-Sealed-Hash", "X-Gyanam-Sealed-Backfilled", "Content-Disposition"],
 )
 
 # Request Models
@@ -643,12 +644,13 @@ def save_draft_endpoint(req: SaveDraftRequest, request: Request, _user: Dict[str
 def list_drafts(_user: Dict[str, Any] = Depends(require("DRAFT_FULL"))):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, case_title, case_number, court, date_created, status, reviewed_by FROM draft_judgments ORDER BY id DESC")
+    cursor.execute("SELECT id, case_title, case_number, court, date_created, status, reviewed_by, sealed_hash, sealed_at, sealed_hash_backfilled FROM draft_judgments ORDER BY id DESC")
     rows = cursor.fetchall()
     conn.close()
     out = [dict(r) for r in rows]
     for d in out:
         d["status"] = normalise_status(d.get("status"))
+        d["sealed_hash_backfilled"] = bool(d.get("sealed_hash_backfilled"))
     return out
 
 @app.get("/api/draft/{draft_id}")
@@ -666,6 +668,15 @@ def get_draft_versions(draft_id: int, _user: Dict[str, Any] = Depends(require("D
         raise HTTPException(status_code=e.status, detail=e.content["detail"])
 
 # ----------------- JUDICIAL EXPORT & PUBLISHING -----------------
+def _seal_headers(draft_data: Dict[str, Any]) -> Dict[str, str]:
+    """Bug 3: tell the client whether the fingerprint in an export is a sealed one or a live preview."""
+    info = seal_info(draft_data)
+    headers = {"X-Gyanam-Sealed": "true" if info["sealed"] else "false"}
+    if info["sealed"]:
+        headers["X-Gyanam-Sealed-Hash"] = info["hash"]
+        headers["X-Gyanam-Sealed-Backfilled"] = "true" if info["backfilled"] else "false"
+    return headers
+
 @app.get("/api/draft/export/docx/{draft_id}")
 def export_docx_endpoint(draft_id: int, request: Request, _user: Dict[str, Any] = Depends(require_any("EXPORT_DRAFT", "EXPORT_GAZETTE", "DRAFT_FULL"))):
     draft_data = get_draft_by_id(draft_id, _user)
@@ -678,7 +689,7 @@ def export_docx_endpoint(draft_id: int, request: Request, _user: Dict[str, Any] 
     return StreamingResponse(
         docx_stream,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        headers={"Content-Disposition": f'attachment; filename="{filename}"', **_seal_headers(draft_data)}
     )
 
 @app.get("/api/draft/export/print/{draft_id}", response_class=HTMLResponse)
@@ -686,7 +697,7 @@ def export_print_html_endpoint(draft_id: int, request: Request, _user: Dict[str,
     draft_data = get_draft_by_id(draft_id, _user)
     html_content = render_printable_html(draft_data)
     log_audit("PRINT_JUDGMENT", f"Opened official printable gazette for Draft #{draft_id}", request=request)
-    return HTMLResponse(content=html_content)
+    return HTMLResponse(content=html_content, headers=_seal_headers(draft_data))
 
 class UpdateDraftStatusRequest(BaseModel):
     draft_id: int

@@ -5,10 +5,11 @@ the HTTP status and the JSON body the handler returns (same shapes the existing 
 """
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from database import get_connection
+from export_engine import compute_seal_hash
 
 CANONICAL_STATUSES = ("DRAFT", "IN_REVIEW", "BENCH_APPROVED", "FINAL_SEALED", "RETURNED")
 LEGACY_STATUS_MAP = {
@@ -102,6 +103,7 @@ def get_draft(draft_id: int) -> Dict[str, Any]:
     finally:
         conn.close()
     data["status"] = normalise_status(data.get("status"))
+    data["sealed_hash_backfilled"] = bool(data.get("sealed_hash_backfilled"))
     if isinstance(data.get("draft_content_json"), str):
         try:
             data["draft_content_json"] = json.loads(data["draft_content_json"])
@@ -231,6 +233,14 @@ def update_status_with_reason(draft_id: int, status: Optional[str], reason: Opti
         new_version = row["version"] + 1
         conn.execute("UPDATE draft_judgments SET status = ?, reviewed_by = ?, version = ? WHERE id = ?;",
                      (target, reviewer, new_version, draft_id))
+        if target == "FINAL_SEALED" and current != "FINAL_SEALED":
+            # Bug 3: freeze the fingerprint at the moment of sealing, in the same transaction as the status
+            # change, so a seal can never be persisted without its hash. Re-sealing an already sealed draft
+            # (FINAL_SEALED -> FINAL_SEALED) skips this block: sealed_hash/sealed_at are write-once.
+            seal_row = dict(conn.execute("SELECT * FROM draft_judgments WHERE id = ?", (draft_id,)).fetchone())
+            conn.execute(
+                "UPDATE draft_judgments SET sealed_hash = ?, sealed_at = ?, sealed_hash_backfilled = 0 WHERE id = ?",
+                (compute_seal_hash(seal_row), datetime.now(timezone.utc).isoformat(), draft_id))
         _record_version(conn, draft_id, new_version, reviewer, target, None, reason or None)
         conn.commit()
     finally:

@@ -18,7 +18,8 @@ import json
 import re
 import html as html_lib
 import hashlib
-from datetime import datetime
+import zipfile
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 import docx
@@ -67,6 +68,94 @@ def generate_judgment_hash(case_number: str, title: str, content: str) -> str:
     return hashlib.sha256(payload.encode('utf-8')).hexdigest()
 
 
+# --------------------------------------------------------------------------------------------
+# Seal fingerprint (Bug 3). One canonical content accumulator + one hash function; the value is
+# computed ONCE when a draft is sealed and persisted (draft_judgments.sealed_hash/sealed_at).
+# Exports of a sealed draft read the persisted value; they never recompute from "now".
+# --------------------------------------------------------------------------------------------
+def _content_dict(draft_content_json) -> dict:
+    if isinstance(draft_content_json, str):
+        try:
+            draft_content_json = json.loads(draft_content_json)
+        except Exception:
+            return {}
+    return draft_content_json if isinstance(draft_content_json, dict) else {}
+
+
+def build_sections_text(draft_content_json) -> str:
+    """The plain-text accumulator the fingerprint is computed over: one block per section, title then content."""
+    out = ""
+    for sec in normalize_sections(_content_dict(draft_content_json).get("sections", {})):
+        out += f"{sec.get('title', '')}\n{sec.get('content', '')}\n\n"
+    return out
+
+
+def compute_seal_hash(draft_row: Dict[str, Any]) -> str:
+    """Canonical fingerprint of a draft row's current content (used at seal time, for backfill and for previews)."""
+    return generate_judgment_hash(
+        draft_row.get("case_number") or "", draft_row.get("case_title") or "",
+        build_sections_text(draft_row.get("draft_content_json")))
+
+
+def is_sealed(draft_data: Dict[str, Any]) -> bool:
+    return str(draft_data.get("status") or "").upper() == "FINAL_SEALED"
+
+
+def _parse_ts(value) -> Optional[datetime]:
+    if not value:
+        return None
+    s = str(value).strip().replace("Z", "+00:00")
+    for parse in (datetime.fromisoformat,
+                  lambda v: datetime.strptime(v[:19], "%Y-%m-%d %H:%M:%S"),
+                  lambda v: datetime.strptime(v[:16], "%Y-%m-%d %H:%M")):
+        try:
+            dt = parse(s)
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
+_EPOCH = datetime(1980, 1, 1, tzinfo=timezone.utc)
+
+
+def seal_info(draft_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Resolve the fingerprint/date an export must show.
+
+    Sealed draft  -> persisted sealed_hash / sealed_at (never "now"). If a sealed draft has no persisted hash
+                     (sealed before Bug 3 and not yet backfilled) the hash is computed by the same shared helper
+                     so every export path still agrees; it is flagged backfilled.
+    Unsealed      -> a fresh preview hash and the current time (a preview is explicitly not a seal).
+    Returns {sealed, hash, when (aware datetime), backfilled}.
+    """
+    if is_sealed(draft_data):
+        h = draft_data.get("sealed_hash") or compute_seal_hash(draft_data)
+        when = (_parse_ts(draft_data.get("sealed_at")) or _parse_ts(draft_data.get("date_created")) or _EPOCH)
+        backfilled = (not draft_data.get("sealed_hash")) or bool(draft_data.get("sealed_hash_backfilled"))
+        return {"sealed": True, "hash": h, "when": when, "backfilled": backfilled}
+    return {"sealed": False, "hash": compute_seal_hash(draft_data), "when": datetime.now(timezone.utc), "backfilled": False}
+
+
+_ZIP_FIXED_TIME = (1980, 1, 1, 0, 0, 0)
+
+
+def normalize_docx_zip(data: bytes) -> bytes:
+    """Re-serialise a DOCX with every ZIP member timestamp pinned (deterministic-build convention).
+    Member order, names and compression type are preserved."""
+    src = zipfile.ZipFile(io.BytesIO(data))
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as dst:
+        for info in src.infolist():
+            payload = src.read(info.filename)
+            zi = zipfile.ZipInfo(info.filename, date_time=_ZIP_FIXED_TIME)
+            zi.compress_type = info.compress_type
+            zi.external_attr = info.external_attr
+            zi.create_system = info.create_system
+            dst.writestr(zi, payload)
+    src.close()
+    return out.getvalue()
+
+
 def _resolve_parties_and_court(draft_data: Dict[str, Any]):
     import re
     court_raw = (draft_data.get("court") or "High Court of Judicature for Rajasthan at Jodhpur").strip()
@@ -98,6 +187,8 @@ def _resolve_parties_and_court(draft_data: Dict[str, Any]):
 def export_judgment_to_docx(draft_data: Dict[str, Any], output_path: Optional[str] = None) -> io.BytesIO:
     """Creates a beautifully styled High Court / Supreme Court DOCX document."""
     doc = docx.Document()
+    seal = seal_info(draft_data)
+    seal_when = seal["when"]
     court_raw, court_header_str, pet, resp, pet_label, resp_label = _resolve_parties_and_court(draft_data)
     
     # Page Setup: Legal / A4 with High Court margins (1.5" left for binding)
@@ -146,7 +237,7 @@ def export_judgment_to_docx(draft_data: Dict[str, Any], output_path: Optional[st
     # Case Number & Date
     meta_p = doc.add_paragraph()
     meta_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    m_run = meta_p.add_run(f"{draft_data.get('case_number', 'S.B. CIVIL WRIT PETITION NO. 4820 OF 2026')}\nDATE OF ORDER / JUDGMENT: {datetime.now().strftime('%d %B %Y').upper()}")
+    m_run = meta_p.add_run(f"{draft_data.get('case_number', 'S.B. CIVIL WRIT PETITION NO. 4820 OF 2026')}\nDATE OF ORDER / JUDGMENT: {seal_when.strftime('%d %B %Y').upper()}")
     m_run.font.name = "Times New Roman"
     m_run.font.size = Pt(11)
     m_run.bold = True
@@ -202,12 +293,10 @@ def export_judgment_to_docx(draft_data: Dict[str, Any], output_path: Optional[st
             pass
     sections_list = normalize_sections(content_json.get("sections", {}))
     
-    full_text_accumulator = ""
     for sec in sections_list:
         sec_num = sec.get("number", "")
         sec_title = sec.get("title", "")
         sec_content = sec.get("content", "")
-        full_text_accumulator += f"{sec_title}\n{sec_content}\n\n"
         
         # Section Heading
         h_p = doc.add_paragraph()
@@ -246,18 +335,14 @@ def export_judgment_to_docx(draft_data: Dict[str, Any], output_path: Optional[st
         "Sd/-\n"
         f"({coram_name})\n"
         f"{court_raw.upper()}\n\n"
-        f"Pronounced on {datetime.now().strftime('%d/%m/%Y')}"
+        f"Pronounced on {seal_when.strftime('%d/%m/%Y')}"
     )
     s_run.font.name = "Times New Roman"
     s_run.font.size = Pt(11)
     s_run.bold = True
 
     # Digital Verification Stamp & Hash Block
-    hash_val = generate_judgment_hash(
-        draft_data.get('case_number', ''),
-        draft_data.get('case_title', ''),
-        full_text_accumulator
-    )
+    hash_val = seal["hash"]
     
     seal_table = doc.add_table(rows=1, cols=1)
     seal_table.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -279,8 +364,14 @@ def export_judgment_to_docx(draft_data: Dict[str, Any], output_path: Optional[st
     seal_run.font.color.rgb = RGBColor(70, 70, 70)
 
     # Return bytes stream or save to file
-    file_stream = io.BytesIO()
-    doc.save(file_stream)
+    # Pin every volatile package field so a sealed export is byte-identical on every call.
+    cp_ = doc.core_properties
+    cp_.created = cp_.modified = seal_when.replace(microsecond=0, tzinfo=None)
+    cp_.last_printed = seal_when.replace(microsecond=0, tzinfo=None)
+    cp_.revision = 1
+    raw = io.BytesIO()
+    doc.save(raw)
+    file_stream = io.BytesIO(normalize_docx_zip(raw.getvalue()))
     file_stream.seek(0)
     
     if output_path:
@@ -315,7 +406,8 @@ def render_printable_html(draft_data: Dict[str, Any]) -> str:
         </div>
         """
         
-    hash_val = generate_judgment_hash(case_no, title, json.dumps(content_json))
+    seal = seal_info(draft_data)
+    hash_val = seal["hash"]
     coram_html_str = esc((draft_data.get('reviewed_by') or "HON'BLE PRESIDING BENCH").upper())
     # Every interpolated value is HTML-escaped (stored drafts are user-authored).
     case_no_raw = str(case_no)
@@ -493,7 +585,7 @@ body {{
     Sd/-<br>
     ({coram_html_str})<br>
     {court_raw_html}<br>
-    <span style="font-size: 9.5pt; font-weight: normal; color: #555;">Pronounced on {datetime.now().strftime('%d %B %Y')}</span>
+    <span style="font-size: 9.5pt; font-weight: normal; color: #555;">Pronounced on {seal['when'].strftime('%d %B %Y')}</span>
 </div>
 
 <div class="digital-seal-box">

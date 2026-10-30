@@ -48,4 +48,12 @@ export async function sha256Hex(buf) {
   const d = await subtle.digest('SHA-256', buf);
   return Array.from(new Uint8Array(d)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
+/** Which seal fingerprint to show for a draft (Bug 3). 'sealed' = hash frozen at the moment of sealing;
+ * 'backfilled' = computed after the fact for a draft sealed before the fix (lower trust); 'preview' = not sealed,
+ * so any export fingerprint is live and will change. */
+export function sealFingerprint(d) {
+  const status = String(d?.status || '').toUpperCase();
+  if (status === 'FINAL_SEALED' && d?.sealed_hash) return { kind: d.sealed_hash_backfilled ? 'backfilled' : 'sealed', hash: String(d.sealed_hash), at: d.sealed_at || null };
+  return { kind: 'preview', hash: null, at: null };
+}
 export { SECTION_KEYS };

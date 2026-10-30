@@ -24,7 +24,7 @@ import { textarea } from '../ui/form.js';
 import { toast } from '../ui/toast.js';
 import { statusChip } from './lib/draft-ui.js';
 import { SECTION_KEYS, normalizeSections, joinSections, classifyConflict, summarizeVerification, engineKind, validateReason, isReasonRequired, returnReasonFor } from './lib/studio-logic.js';
-import { STEPS, stepperCurrent, buildPreChecks, checksPending, attentionCount, approvalGate, exportFileName, sha256Hex } from './lib/review-logic.js';
+import { STEPS, stepperCurrent, buildPreChecks, checksPending, attentionCount, approvalGate, exportFileName, sha256Hex, sealFingerprint } from './lib/review-logic.js';
 
 addMessages('en', dEn); addMessages('hi', dHi); addMessages('en', en); addMessages('hi', hi);
 
@@ -109,11 +109,13 @@ async function render({ id }, ctx) {
     if (!ok) return;
     R.busy = true; paintSign();
     try {
-      let blob = null;
-      if (sealing) blob = await exportDocx();
       await setStatus(gate.next);
       toast(sealing ? t('review.seal.done') : t('review.approve.done'), { tone: 'primary' });
-      if (blob) saveBlob(blob, R.fileName);
+      if (sealing) {
+        // Seal first, then export: the sealed copy carries the fingerprint frozen at the moment of sealing.
+        try { const d = await api.draft(id); if (d) { R.d = d; } } catch { /* the fingerprint row refreshes on reload */ }
+        saveBlob(await exportDocx(), R.fileName);
+      }
     } catch (e) { fail(e); } finally { R.busy = false; paintSign(); }
   }
   /** Modal with a required reason (min 5 chars). Resolves the trimmed reason, or null when cancelled. */
@@ -198,18 +200,20 @@ async function render({ id }, ctx) {
     clear(signHost);
     const gate = approvalGate({ status: R.status, canFinalize: can('FINALIZE_JUDGMENT'), pending: checksPending(checks()) });
     const name = ctx.user?.full_name || ctx.user?.name || '';
+    const seal = sealFingerprint(R.d ? { ...R.d, status: R.status } : null);
     const kv = [
       [t('review.kv.signer'), name || t('review.kv.unknown')],
       [t('review.kv.signature'), t('review.sig.none')],
       [t('review.kv.document'), R.fileName || exportFileName(R.d.case_number, id)],
       [t('review.kv.fingerprint'), R.hash ? R.hash : R.hashUnavailable ? t('review.fp.unavailable') : t('review.fp.after')],
+      [t(`review.seal.fp.${seal.kind}`), seal.hash || t('review.seal.fp.previewNote')],
       [t('review.kv.stored'), t('review.stored')],
     ];
     const reason = { 'no-permission': t('review.gate.noperm'), 'checks-pending': t('review.gate.pending'),
       'not-reviewable': R.status === 'FINAL_SEALED' ? t('review.gate.sealed') : t('review.gate.notSent') }[gate.reason];
     signHost.append(card({ title: gate.next === 'FINAL_SEALED' ? t('review.seal') : t('review.approve') },
       h('p', {}, t('review.sign.lede')),
-      h('dl', { class: 'review__kv' }, ...kv.flatMap(([k, v], i) => [h('dt', {}, k), h('dd', { class: i === 3 && R.hash ? 'review__hash' : null }, v)])),
+      h('dl', { class: 'review__kv' }, ...kv.flatMap(([k, v], i) => [h('dt', {}, k), h('dd', { class: (i === 3 && R.hash) || (i === 4 && seal.hash) ? 'review__hash' : null }, v)])),
       reason ? h('p', { class: 'review__reason', role: 'status' }, reason) : null,
       h('div', { class: 'review__actions' },
         gate.next ? button({ label: gate.next === 'FINAL_SEALED' ? t('review.seal') : t('review.approve'), variant: 'primary', disabled: !gate.canAct || R.busy, onClick: () => act(gate) }) : null,
