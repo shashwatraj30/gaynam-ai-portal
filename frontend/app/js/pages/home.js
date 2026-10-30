@@ -19,7 +19,7 @@ import { field, input } from '../ui/form.js';
 import {
   homeVariant, greetingKey, sortMatters, matterCounts, pickAttention, alertCount, summarizeLedger,
   shapeDistribution, activityEvents, lastSyncTimestamp, syncRows, userSummary, isSimulatedSync, kpiTiles, quickLaunch,
-  metricsCourtRows, metricsStatusRows,
+  metricsCourtRows, metricsStatusRows, createTtlMemo, memoUserKey,
 } from './lib/home-logic.js';
 import { displayName } from './lib/signin-logic.js';
 import { loadDensity, applyDensity } from './lib/settings-logic.js';
@@ -38,7 +38,11 @@ function getMetrics() {
   if (!metricsP) metricsP = api.dashboardMetrics().catch((e) => { metricsP = null; throw e; });
   return metricsP;
 }
-function refreshAll() { metricsP = null; refreshers.forEach((run) => run()); }
+// The admin sync/users cards share one short-TTL memo across mounts (keyed by user, so sign-out/user switch never leaks);
+// Refresh clears it along with the metrics promise.
+const adminMemo = createTtlMemo(30000);
+let memoKey = '';
+function refreshAll() { metricsP = null; adminMemo.clear(); refreshers.forEach((run) => run()); }
 
 /** A card whose body loads asynchronously: skeleton -> data | empty | error with Retry. */
 function asyncCard({ title, actions, load, render, className }) {
@@ -248,10 +252,10 @@ function statusDistCard() {
 function syncCard() {
   return asyncCard({
     title: t('home.admin.sync'),
-    load: async () => {
+    load: () => adminMemo.get(`sync|${memoKey}`, async () => {
       const [status, history] = await Promise.all([api.sync.status(), api.sync.history()]);
       return { status, history };
-    },
+    }),
     render: ({ status, history }) => {
       const ts = lastSyncTimestamp(status);
       const rows = syncRows(history, 5);
@@ -279,7 +283,7 @@ function syncCard() {
 function usersCard() {
   return asyncCard({
     title: t('home.admin.users'),
-    load: () => api.admin.users(),
+    load: () => adminMemo.get(`users|${memoKey}`, () => api.admin.users()),
     render: (res) => {
       const s = userSummary(res);
       return h('div', {}, h('p', {}, t('home.admin.usersTotal', s)), button({ label: t('nav.chamber'), variant: 'ghost', href: '#/chamber' }));
@@ -302,7 +306,7 @@ async function render(params, ctx) {
   const variant = homeVariant(user.role);
   const name = displayName(user.full_name || '') || t('role.unknown');
   const subEl = h('p', { class: 'g-page__lede' });
-  metricsP = null; refreshers.length = 0;
+  metricsP = null; refreshers.length = 0; memoKey = memoUserKey(user);
   const head = h('header', { class: 'g-page__head' },
     h('div', {}, h('h1', { class: 'g-page__title' }, t(`home.greeting.${greetingKey(new Date().getHours())}`, { name })), subEl),
     h('div', { class: 'g-page__actions' }, button({ label: t('home.refresh'), variant: 'ghost', onClick: refreshAll })));

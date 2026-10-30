@@ -291,18 +291,19 @@ def get_dashboard_metrics(request: Request, _user: Dict[str, Any] = Depends(get_
     can_sync = can_audit or check_permission(_user, "MANAGE_CORPUS")
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM judgments")
-    total_cases = cursor.fetchone()[0]
-
-    cursor.execute("SELECT COUNT(*) FROM judgments WHERE court LIKE '%Supreme Court%'")
-    sc_cases = cursor.fetchone()[0]
+    # One pass over the covering idx_judgments_court (a few dozen distinct courts) replaces the former full-table
+    # scans: total, the Supreme Court split and the top-courts list all derive from it. The case-insensitive
+    # 'supreme court' substring test runs on the grouped court names, not on every judgment row.
+    cursor.execute("SELECT court, COUNT(*) AS c FROM judgments GROUP BY court")
+    court_counts = [(r[0], r[1]) for r in cursor.fetchall()]
+    total_cases = sum(c for _, c in court_counts)
+    sc_cases = sum(c for name, c in court_counts if name and "supreme court" in name.lower())
     hc_cases = total_cases - sc_cases
+    top_courts = [{"court": name, "c": c}
+                  for name, c in sorted(court_counts, key=lambda x: (-x[1], x[0] or ""))[:8]]
 
-    cursor.execute("SELECT court, COUNT(*) as c FROM judgments GROUP BY court ORDER BY c DESC LIMIT 8")
-    top_courts = [dict(r) for r in cursor.fetchall()]
-
-    cursor.execute("SELECT precedent_status, COUNT(*) as c FROM judgments GROUP BY precedent_status")
-    status_counts = {r['precedent_status']: r['c'] for r in [dict(x) for x in cursor.fetchall()]}
+    cursor.execute("SELECT precedent_status, COUNT(*) AS c FROM judgments GROUP BY precedent_status")
+    status_counts = {r[0]: r[1] for r in cursor.fetchall()}
 
     out: Dict[str, Any] = {
         "total_judgments": total_cases,

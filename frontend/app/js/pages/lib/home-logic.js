@@ -163,3 +163,25 @@ export function metricsStatusRows(m) {
   const s = m?.status_counts;
   return s && typeof s === 'object' ? Object.entries(s).map(([k, c]) => ({ precedent_status: k, c })) : [];
 }
+
+/**
+ * Tiny promise memo with a TTL, keyed by a caller-supplied string (the signed-in user), so repeated Home mounts
+ * within `ttlMs` share one request and one user's cached payload is never served to another. Rejections are not
+ * cached. `clear()` drops everything (Refresh button).
+ */
+export function createTtlMemo(ttlMs, now = Date.now) {
+  const entries = new Map();
+  return {
+    get(key, loader) {
+      const hit = entries.get(key);
+      if (hit && now() - hit.at < ttlMs) return hit.p;
+      const p = Promise.resolve().then(loader).catch((e) => { if (entries.get(key)?.p === p) entries.delete(key); throw e; });
+      entries.set(key, { p, at: now() });
+      return p;
+    },
+    clear() { entries.clear(); },
+  };
+}
+
+/** Cache key for per-user Home payloads. */
+export function memoUserKey(user) { return `${user?.id ?? user?.user_id ?? user?.email ?? user?.username ?? ''}|${user?.role ?? ''}`; }

@@ -30,3 +30,20 @@ test('metrics distributions and simulated sync detection', () => {
   assert.equal(H.isSimulatedSync({ mode: 'live' }), false);
   assert.equal(H.isSimulatedSync(null), false);
 });
+
+test('createTtlMemo shares in-flight/fresh results, expires, isolates keys, and does not cache failures', async () => {
+  let t = 0;
+  const memo = H.createTtlMemo(1000, () => t);
+  let calls = 0;
+  const load = () => { calls++; return Promise.resolve(calls); };
+  assert.equal(await memo.get('a', load), 1);
+  assert.equal(await memo.get('a', load), 1);
+  assert.equal(await memo.get('b', load), 2);
+  t = 1500;
+  assert.equal(await memo.get('a', load), 3);
+  memo.clear();
+  assert.equal(await memo.get('a', load), 4);
+  await assert.rejects(memo.get('f', () => Promise.reject(new Error('x'))));
+  assert.equal(await memo.get('f', () => Promise.resolve('ok')), 'ok');
+  assert.notEqual(H.memoUserKey({ id: 1, role: 'A' }), H.memoUserKey({ id: 2, role: 'A' }));
+});

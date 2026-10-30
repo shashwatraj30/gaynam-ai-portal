@@ -430,8 +430,6 @@ def _m009_audit_ledger_sync(conn):
     conn.executemany("UPDATE audit_logs SET ledger_synced = 0 WHERE id = ?", [(i,) for i in missing])
 
 
-
-
 def _m010_seal_hash_columns(conn):
     """Bug 3: persist the seal fingerprint. sealed_hash / sealed_at stay NULL for drafts that were never sealed
     (and, until migration 011 runs, for drafts sealed before this fix). sealed_hash_backfilled = 1 marks a hash
@@ -486,6 +484,13 @@ def _m011_backfill_seal_hash(conn):
                      "sealed_hash_backfilled = 1 WHERE id = ?", (compute_seal_hash(d), sealed_at, d["id"]))
 
 
+def _m012_judgments_dashboard_indexes(conn):
+    """Covering indexes for the /api/dashboard_metrics GROUP BY court / GROUP BY precedent_status aggregates
+    (index-only scans instead of reading every judgment row). One-off cost at migration time."""
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_judgments_court ON judgments(court)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_judgments_precedent_status ON judgments(precedent_status)")
+
+
 MIGRATIONS = [
     ("001_draft_columns", migrate_draft_columns),
     ("002_documents", _m002_documents),
@@ -498,6 +503,7 @@ MIGRATIONS = [
     ("009_audit_ledger_sync", _m009_audit_ledger_sync),
     ("010_seal_hash_columns", _m010_seal_hash_columns),
     ("011_backfill_seal_hash", _m011_backfill_seal_hash),
+    ("012_judgments_dashboard_indexes", _m012_judgments_dashboard_indexes),
 ]
 
 
