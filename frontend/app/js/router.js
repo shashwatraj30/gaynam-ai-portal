@@ -6,6 +6,7 @@
 // Boot: configureRouter({...hooks}); registerPage(mod) for each page; startRouter().
 // The pure functions (parseHash, matchRoute, resolveRoute) import cleanly in Node; DOM is touched only at render time.
 import { getUser, getToken, can as realCan } from './api.js';
+import { routeLoadingPlaceholder } from './ui/skeleton.js';
 import { effectiveCan, effectiveUser, loadPreview } from './ui/role-preview-logic.js';
 
 const pages = [];
@@ -145,6 +146,10 @@ async function run() {
     outlet.setAttribute('aria-busy', 'true');
     const ctx = makeCtx(decision.query || new URLSearchParams());
     hooks.setBreadcrumb([{ label: title }]);
+    // Clear the previous page now so stale content never sits under the new URL/breadcrumb while render() awaits.
+    // mySeq (incremented at the start of run) is the navigation generation: a later navigation voids this one.
+    while (outlet.firstChild) outlet.removeChild(outlet.firstChild);
+    outlet.append(routeLoadingPlaceholder());
     try {
       node = await page.render(decision.params || {}, ctx);
       if (mySeq !== seq) { try { page.onLeave?.(); } catch { /* ignore */ } return; }
