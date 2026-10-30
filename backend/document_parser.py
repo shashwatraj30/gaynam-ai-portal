@@ -73,6 +73,12 @@ _HEADINGS = (
                          r"substance\s+of\s+(?:the\s+)?complaint(?:\s*/\s*police\s+action)?|statement\s+of\s+facts)\s*:?\s*$", re.I)),
     ("ISSUES", re.compile(r"^(?:[A-Z]\.\s*)?(?:questions?\s+of\s+law|issues?(?:\s+for\s+determination)?|points?\s+for\s+determination|"
                           r"grounds\s+of\s+challenge)\s*:?\s*$", re.I)),
+    ("ARGS_P", re.compile(r"^(?:[A-Z]\.\s*)?(?:(?:submissions?|arguments?|contentions?)\s+(?:on\s+behalf\s+of|of)\s+(?:the\s+)?"
+                          r"(?:petitioners?|applicants?|appellants?)|(?:petitioners?|applicants?|appellants?)['’]?s?\s+"
+                          r"(?:submissions?|arguments?|contentions?))\s*:?\s*$", re.I)),
+    ("ARGS_R", re.compile(r"^(?:[A-Z]\.\s*)?(?:(?:submissions?|arguments?|contentions?)\s+(?:on\s+behalf\s+of|of)\s+(?:the\s+)?"
+                          r"(?:respondents?|opposite\s+party|state)|(?:respondents?|state)['’]?s?\s+"
+                          r"(?:submissions?|arguments?|contentions?))\s*:?\s*$", re.I)),
     ("GROUNDS", re.compile(r"^(?:[A-Z]\.\s*)?grounds?\s*:?\s*$", re.I)),
     ("PRAYER", re.compile(r"^(?:[A-Z]\.\s*)?(?:prayer|relief\s+sought|reliefs?)\s*:?\s*$", re.I)),
     ("END", re.compile(r"^(?:investigation\s+directed|verification|affidavit|annexures?|list\s+of\s+(?:dates|documents)|"
@@ -116,17 +122,60 @@ def _sections(lines: List[str]) -> Dict[str, List[str]]:
     return {k: v for k, v in out.items() if any(x.strip() for x in v)}
 
 
-def _is_fir(text: str) -> bool:
-    low = text.lower()
-    if "first information report" in low or "police station" in low[:600]:
+# FIR-form heading anchors. Hoisted as raw fragments so _parse_fir() and the classifier compile from the SAME
+# source text and cannot drift apart.
+_PS_HEAD = r"POLICE STATION\s*:"
+_ACCUSED_WORDS = r"ACCUSED\s+(?:PERSONS|PARTICULARS)"
+_ACCUSED_HEAD = _ACCUSED_WORDS + r"\s*:"
+_ACTS_HEAD = r"ACTS\s*&\s*SECTIONS\s*:?"
+_SUBSTANCE_HEAD = r"SUBSTANCE OF COMPLAINT"
+_FIR_POLICE_STATION_RE = re.compile(_PS_HEAD + r"\s*([^\n]+)", re.I)
+
+# Classifier markers: headings are line-anchored so FIR boilerplate quoted inside a pleading's argument text
+# does not count; the two phrase markers may appear anywhere.
+_FIR_FORM_MARKERS: Tuple[re.Pattern, ...] = (
+    re.compile(r"^\s*" + _PS_HEAD, re.I | re.M),
+    re.compile(r"^\s*" + _ACCUSED_HEAD, re.I | re.M),
+    re.compile(r"^\s*" + _ACTS_HEAD, re.I | re.M),
+    re.compile(r"^\s*" + _SUBSTANCE_HEAD, re.I | re.M),
+    re.compile(r"first information report", re.I),
+    re.compile(r"\bfir\s*no\b", re.I),
+)
+_FIR_SCORE_CAP = 4
+
+# "BETWEEN:" cause title: a petitioner/applicant party block then (within ~15 lines each) an AND line or a respondent block.
+_BETWEEN_BLOCK_RE = re.compile(
+    r"^[ \t]*BETWEEN[ \t]*:?[ \t]*$(?:\n[^\n]*){0,15}?\n[^\n]*\b(?:PETITIONERS?|APPLICANTS?)\b[^\n]*"
+    r"(?:\n[^\n]*){0,15}?\n(?:[ \t]*AND[ \t]*$|[^\n]*\bRESPONDENTS?\b)",
+    re.I | re.M)
+
+
+def _cause_title_window(n_lines: int) -> int:
+    """How many leading lines to scan for a cause title. Interpretation of the spec's "min(len//4, 150)":
+    scale with document length but never fewer than the old hard 60 (so short docs do not regress) and never
+    more than 150. Half the line count is used so a cause title pushed down by a long preamble is still found."""
+    return min(max(60, n_lines // 2), 150)
+
+
+def _fir_score(text: str) -> int:
+    """Number of FIR-form markers present in the text (capped)."""
+    text = text or ""
+    return min(sum(1 for rx in _FIR_FORM_MARKERS if rx.search(text)), _FIR_SCORE_CAP)
+
+
+def _has_pleading_cause_title(text: str) -> bool:
+    """True when the document has a court-pleading cause title ("A versus B" or a BETWEEN: block) near the top."""
+    lines = (text or "").splitlines()
+    head = lines[:_cause_title_window(len(lines))]
+    if any(_VERSUS_LINE_RE.match(l) or _VERSUS_INLINE_RE.match(l) for l in head):
         return True
-    if not re.search(r"\bfir\s*no", low):
-        return False
-    # A bare "FIR No. ..." mention is not enough on its own: a pleading (bail application, writ, appeal)
-    # routinely cites an FIR number while discussing it, but is not itself an FIR. An explicit "A versus B"
-    # cause-title line is the hallmark of a court pleading, so it overrides the "fir no" match.
-    has_versus_line = any(_VERSUS_LINE_RE.match(l) or _VERSUS_INLINE_RE.match(l) for l in text.splitlines()[:60])
-    return not has_versus_line
+    return bool(_BETWEEN_BLOCK_RE.search("\n".join(head)))
+
+
+def _is_fir(text: str) -> bool:
+    # A pleading (bail application, writ, appeal) routinely cites an FIR number or quotes FIR text, but is not
+    # itself an FIR: require two FIR-form markers AND no pleading cause title.
+    return _fir_score(text) >= 2 and not _has_pleading_cause_title(text)
 
 
 def _fir_block(text: str, heading_rx: str) -> str:
@@ -137,7 +186,7 @@ def _fir_block(text: str, heading_rx: str) -> str:
 def _parse_fir(text: str) -> Dict[str, Any]:
     f = {k: "" for k in FIELD_KEYS}
     ps = ""
-    m = re.search(r"POLICE STATION\s*:\s*([^\n]+)", text, re.I)
+    m = _FIR_POLICE_STATION_RE.search(text)
     if m:
         ps_line = m.group(1).strip()
         pm = re.match(r"([A-Za-z0-9 ]+?)\s+P\.?\s?S\.?", ps_line)
@@ -155,7 +204,7 @@ def _parse_fir(text: str) -> Dict[str, Any]:
         state_name = "State"
     f["petitioner"] = state_name
     names: List[str] = []
-    block = _fir_block(text, r"\n(?:ACCUSED\s+(?:PERSONS|PARTICULARS)|SUSPECTED\s*/\s*ACCUSED\s+PERSONS)\s*:?")
+    block = _fir_block(text, r"\n(?:" + _ACCUSED_WORDS + r"|SUSPECTED\s*/\s*ACCUSED\s+PERSONS)\s*:?")
     if not block:
         # Numbered government-form layout, e.g. "7. Details of Known / Suspected / Unknown / Accused with full
         # particulars" — bounded by the next top-level numbered item (e.g. "8.") rather than an all-caps heading.
@@ -187,7 +236,7 @@ def _parse_fir(text: str) -> Dict[str, Any]:
     if names:
         f["respondent"] = names[0] + (" & Ors." if len(names) > 1 else "")
         f["case_title"] = f"{state_name} v. {f['respondent']}"
-    secs = _fir_block(text, r"\nACTS\s*&\s*SECTIONS\s*:?")
+    secs = _fir_block(text, r"\n" + _ACTS_HEAD)
     if secs:
         f["statutory_provisions"] = "; ".join(_clean_line(re.sub(r"^\s*\d+[.)]\s*", "", l)) for l in secs.splitlines() if l.strip())
     if not f["statutory_provisions"]:
@@ -202,15 +251,20 @@ def _parse_fir(text: str) -> Dict[str, Any]:
 
 
 def _parties(lines: List[str]) -> Tuple[str, str]:
-    head = lines[:60]
+    head = lines[:_cause_title_window(len(lines))]
     for i, line in enumerate(head):
-        if _VERSUS_LINE_RE.match(line):
+        # A bare "AND" line also separates the party blocks when the cause title opens with "BETWEEN:".
+        is_and = bool(re.match(r"^and$", line.strip(), re.I)) and any(
+            re.match(r"^between\s*:?$", h.strip(), re.I) for h in head[:i])
+        if _VERSUS_LINE_RE.match(line) or is_and:
             before: List[str] = []
             for prev in reversed(head[:i]):
                 if re.match(r"^(?:between|in the matter of)\s*:?$", prev.strip(), re.I):
                     break
                 if _CASE_NO_RE.search(prev) or _COURT_RE.search(prev) or re.match(r"^(?:petition|writ|appeal|application)\b", prev.strip(), re.I):
                     break
+                if prev.lstrip().startswith("(") or len(prev) > 120:
+                    break  # parenthetical cause-title note / running prose, not a party name
                 before.insert(0, prev)
             after: List[str] = []
             for nxt in head[i + 1:]:
@@ -260,41 +314,55 @@ def _statutes(text: str) -> str:
     return "; ".join(found)
 
 
+def _parse_generic(text: str) -> Dict[str, Any]:
+    """Generic court-pleading field extraction (always run first by extract_fields)."""
+    fields: Dict[str, Any] = {k: "" for k in FIELD_KEYS}
+    nonempty = [l.strip() for l in text.split("\n") if l.strip()]
+    secs = _sections(nonempty)
+    for l in nonempty[:25]:
+        if _COURT_RE.search(l) and len(l) < 160:
+            fields["court"] = re.sub(r"^IN THE\s+", "", l, flags=re.I).strip(" :.-")
+            break
+    for l in nonempty[:40]:
+        if _COURT_RE.search(l):
+            continue
+        m = _CASE_NO_RE.search(l)
+        if m and re.search(r"\d", m.group(0)):
+            fields["case_number"] = _clean_line(m.group(0)).strip(" :.-")
+            break
+    pet, res = _parties(nonempty)
+    fields["petitioner"], fields["respondent"] = pet, res
+    if pet and res:
+        fields["case_title"] = f"{pet} v. {res}"
+    fields["facts"] = "\n".join(secs.get("FACTS", [])).strip()
+    fields["prayer"] = "\n".join(secs.get("PRAYER", [])).strip()
+    fields["petitioner_arguments"] = "\n".join(secs.get("ARGS_P", [])).strip()
+    fields["respondent_arguments"] = "\n".join(secs.get("ARGS_R", [])).strip()
+    if not fields["facts"]:
+        m = re.search(r"(?im)^\s*facts?\s*:\s*(.+)$", text)
+        if m:
+            fields["facts"] = m.group(1).strip()
+    fields["statutory_provisions"] = _statutes(text)
+    return fields
+
+
 def extract_fields(text: str) -> Tuple[Dict[str, str], List[str]]:
     """(fields, issues) read from the (redacted) document text. Anything not present in the text is ''/[]."""
     text = text or ""
     fields = {k: "" for k in FIELD_KEYS}
     if not text.strip():
         return fields, []
-    lines = [l.strip() for l in text.split("\n")]
-    nonempty = [l for l in lines if l]
-    secs = _sections(nonempty)
+    secs = _sections([l.strip() for l in text.split("\n") if l.strip()])
 
+    fields = _parse_generic(text)
     if _is_fir(text):
-        fields.update(_parse_fir(text))
-    else:
-        for l in nonempty[:25]:
-            if _COURT_RE.search(l) and len(l) < 160:
-                fields["court"] = re.sub(r"^IN THE\s+", "", l, flags=re.I).strip(" :.-")
-                break
-        for l in nonempty[:40]:
-            if _COURT_RE.search(l):
-                continue
-            m = _CASE_NO_RE.search(l)
-            if m and re.search(r"\d", m.group(0)):
-                fields["case_number"] = _clean_line(m.group(0)).strip(" :.-")
-                break
-        pet, res = _parties(nonempty)
-        fields["petitioner"], fields["respondent"] = pet, res
-        if pet and res:
-            fields["case_title"] = f"{pet} v. {res}"
-        fields["facts"] = "\n".join(secs.get("FACTS", [])).strip()
-        fields["prayer"] = "\n".join(secs.get("PRAYER", [])).strip()
-        if not fields["facts"]:
-            m = re.search(r"(?im)^\s*facts?\s*:\s*(.+)$", text)
-            if m:
-                fields["facts"] = m.group(1).strip()
-        fields["statutory_provisions"] = _statutes(text)
+        # FIR overlay. _is_fir() already guarantees there is no pleading cause title, so on a genuine FIR form the
+        # FIR-form readings are authoritative (keeps real-FIR output identical to the pre-classifier behaviour,
+        # e.g. the precise ACTS & SECTIONS block beats the whole-text statute scan). The generic pass still
+        # contributes every field the FIR pass leaves empty. A misclassified pleading can no longer reach here.
+        for k, v in _parse_fir(text).items():
+            if v:
+                fields[k] = v
 
     issues: List[str] = []
     for q in _QUESTION_RE.findall(text):

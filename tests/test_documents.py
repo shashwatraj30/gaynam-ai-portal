@@ -313,3 +313,13 @@ def test_archive_hides_from_list(client, hdr):
     # An archived document with no linked drafts can still be permanently deleted (plan: delete feature).
     assert client.delete(f"/api/documents/{d['id']}", headers=h).status_code == 200
     assert client.get(f"/api/documents/{d['id']}", headers=h).status_code == 404
+
+
+def test_bail_application_upload_not_misclassified_as_fir(client, hdr):
+    """FIR No. cited in a bail application must not route it to the FIR parser (data-integrity)."""
+    from _fir_fixtures import BAIL_APPLICATION
+    d = client.post("/api/documents", data={"text": BAIL_APPLICATION, "doc_type": "PETITION"}, headers=hdr["Clerk"]).json()
+    f = d["extraction"]["fields"]
+    assert f["case_number"] == "BAIL APPLICATION NO. 1234 OF 2026"
+    assert f["petitioner"] == "Ravi Kumar" and f["respondent"] == "State of Rajasthan"
+    assert f["court"] and f["facts"] and f["prayer"] and f["petitioner_arguments"] and f["respondent_arguments"]
