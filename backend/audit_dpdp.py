@@ -16,8 +16,9 @@ import os
 import sys
 import hashlib
 import json
+import sqlite3
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from database import get_connection
@@ -36,9 +37,15 @@ def init_cryptographic_ledger():
         details TEXT NOT NULL,
         ip_address TEXT NOT NULL,
         prev_hash TEXT NOT NULL,
-        current_hash TEXT NOT NULL
+        current_hash TEXT NOT NULL,
+        audit_log_id INTEGER
     );
     """)
+    # Older ledgers predate the audit_logs back-reference column; add it (idempotent).
+    cols = {r[1] for r in cursor.execute("PRAGMA table_info(cryptographic_audit_ledger)").fetchall()}
+    if "audit_log_id" not in cols:
+        cursor.execute("ALTER TABLE cryptographic_audit_ledger ADD COLUMN audit_log_id INTEGER")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ledger_audit_log_id ON cryptographic_audit_ledger(audit_log_id)")
     conn.commit()
     conn.close()
 
@@ -48,30 +55,54 @@ import threading
 
 _ledger_lock = threading.Lock()
 
-def record_tamper_evident_event(user_name: str, user_role: str, action: str, details: str, ip: str = "127.0.0.1") -> str:
-    """Records an audit event with SHA-256 hash chaining (Thread-safe)."""
+def record_tamper_evident_event(user_name: str, user_role: str, action: str, details: str, ip: str = "127.0.0.1",
+                                audit_log_id: Optional[int] = None) -> str:
+    """Records an audit event with SHA-256 hash chaining (Thread-safe).
+
+    audit_log_id (optional) back-references the audit_logs row this block mirrors. It is stored
+    beside the block (not part of the hash). When given, the call is idempotent: if a block for
+    that audit_log_id already exists its hash is returned and nothing is appended.
+    """
+    try:
+        return _record_event(user_name, user_role, action, details, ip, audit_log_id)
+    except sqlite3.OperationalError as e:
+        if "no such" not in str(e):
+            raise
+        init_cryptographic_ledger()  # table/column missing (DB recreated or pre-migration): repair, retry once
+        return _record_event(user_name, user_role, action, details, ip, audit_log_id)
+
+
+def _record_event(user_name, user_role, action, details, ip, audit_log_id):
     with _ledger_lock:
         conn = get_connection()
-        cursor = conn.cursor()
-        
-        # Get previous block hash
-        cursor.execute("SELECT current_hash FROM cryptographic_audit_ledger ORDER BY id DESC LIMIT 1")
-        row = cursor.fetchone()
-        prev_hash = row[0] if row else "GENESIS_NLUJ_KELYVO_LEDGER_BLOCK_0000000"
-        
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        block_content = f"{prev_hash}|{timestamp}|{user_name}|{user_role}|{action}|{details}|{ip}"
-        current_hash = hashlib.sha256(block_content.encode('utf-8')).hexdigest()
-        
-        cursor.execute("""
-        INSERT INTO cryptographic_audit_ledger (
-            timestamp, user_name, user_role, action, details, ip_address, prev_hash, current_hash
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
-        """, (timestamp, user_name, user_role, action, details, ip, prev_hash, current_hash))
-        
-        conn.commit()
-        conn.close()
-        return current_hash
+        try:
+            cursor = conn.cursor()
+            if audit_log_id is not None:
+                cursor.execute("SELECT current_hash FROM cryptographic_audit_ledger WHERE audit_log_id = ? LIMIT 1",
+                               (audit_log_id,))
+                existing = cursor.fetchone()
+                if existing:
+                    return existing[0]
+
+            # Chain order is insertion order (highest id = previous block), never timestamp order.
+            cursor.execute("SELECT current_hash FROM cryptographic_audit_ledger ORDER BY id DESC LIMIT 1")
+            row = cursor.fetchone()
+            prev_hash = row[0] if row else "GENESIS_NLUJ_KELYVO_LEDGER_BLOCK_0000000"
+
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+            block_content = f"{prev_hash}|{timestamp}|{user_name}|{user_role}|{action}|{details}|{ip}"
+            current_hash = hashlib.sha256(block_content.encode('utf-8')).hexdigest()
+
+            cursor.execute("""
+            INSERT INTO cryptographic_audit_ledger (
+                timestamp, user_name, user_role, action, details, ip_address, prev_hash, current_hash, audit_log_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """, (timestamp, user_name, user_role, action, details, ip, prev_hash, current_hash, audit_log_id))
+
+            conn.commit()
+            return current_hash
+        finally:
+            conn.close()
 
 def verify_ledger_integrity() -> Dict[str, Any]:
     """Scans entire audit ledger and verifies mathematical proof of non-tampering."""

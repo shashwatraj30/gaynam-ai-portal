@@ -38,6 +38,7 @@ from ocr_engine import process_scanned_brief, anonymize_pii, clean_ocr_text
 from court_sync_daemon import run_incremental_sync, get_sync_status, get_sync_history
 from export_engine import export_judgment_to_docx, render_printable_html
 from audit_dpdp import record_tamper_evident_event, verify_ledger_integrity, get_ledger_blocks
+from audit_utils import resync_pending_ledger
 import drafts_service as drafts_svc
 import search_service as search_svc
 
@@ -156,40 +157,8 @@ class SaveDraftRequest(BaseModel):
 class AnonymizeRequest(BaseModel):
     text: str
 
-# Unified Audit Logger
-def _resolve_actor(request: Optional[Request], user: Optional[Dict[str, Any]]):
-    if user is None and request is not None:
-        user = getattr(request.state, "user", None)
-        if user is None:
-            auth = request.headers.get("authorization", "")
-            if auth.startswith("Bearer "):
-                try:
-                    user = decode_access_token(auth.split(" ", 1)[1].strip())
-                except Exception:
-                    user = None
-    return user
-
-def log_audit(action: str, details: str, role: Optional[str] = None,
-              request: Optional[Request] = None, user: Optional[Dict[str, Any]] = None):
-    try:
-        user = _resolve_actor(request, user)
-        if user:
-            user_name = user.get("full_name") or user.get("email") or "unknown"
-            user_role = role or user.get("role") or "UNKNOWN"
-        else:
-            user_name = "Hon'ble User (NLUJ)" if request is None else "anonymous"
-            user_role = role or "Hon'ble Justice / Judicial User"
-        ip = get_client_ip(request)
-        conn = get_connection()
-        conn.execute("""
-        INSERT INTO audit_logs (timestamp, user_name, user_role, action, details, ip_address)
-        VALUES (?, ?, ?, ?, ?, ?);
-        """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_name, user_role, action, details, ip))
-        conn.commit()
-        conn.close()
-        record_tamper_evident_event(user_name, user_role, action, details, ip)
-    except Exception as e:
-        print(f"Error logging audit: {e}")
+# Unified audit logger: the single implementation lives in audit_utils (shared with search_service/search_routes).
+from audit_utils import log_audit  # noqa: E402,F401
 
 # ----------------- CURATION FLAG (B9) -----------------
 TEMPLATE_PHRASES = ("judicial determination by",)
@@ -902,6 +871,14 @@ def sync_history_endpoint(_user: Dict[str, Any] = Depends(require_any("MANAGE_CO
 @app.get("/api/audit/ledger/verify")
 def verify_audit_ledger_endpoint(_user: Dict[str, Any] = Depends(require_any("VIEW_AUDIT", "VERIFY_LEDGER"))):
     return verify_ledger_integrity()
+
+@app.post("/api/admin/audit/resync-ledger")
+def resync_audit_ledger_endpoint(request: Request, _user: Dict[str, Any] = Depends(require("MANAGE_USERS"))):
+    """Re-attempt the ledger write for every audit_logs row flagged ledger_synced = 0 (idempotent)."""
+    summary = resync_pending_ledger()
+    # One summary event for the whole run -- never one audit row per resynced row (would recurse).
+    log_audit("AUDIT_LEDGER_RESYNC", json.dumps(summary), request=request, user=_user)
+    return summary
 
 @app.get("/api/audit/ledger/blocks")
 def get_ledger_blocks_endpoint(limit: Optional[int] = 20, _user: Dict[str, Any] = Depends(require_any("VIEW_AUDIT", "VERIFY_LEDGER"))):

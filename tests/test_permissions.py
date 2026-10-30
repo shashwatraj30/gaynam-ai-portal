@@ -33,6 +33,7 @@ ROUTES = [
     ("GET", "/api/audit_logs", ["VIEW_AUDIT", "EXPORT_AUDIT_LOGS"], lambda: {}),
     ("GET", "/api/audit/ledger/verify", ["VIEW_AUDIT", "VERIFY_LEDGER"], lambda: {}),
     ("GET", "/api/audit/ledger/blocks", ["VIEW_AUDIT", "VERIFY_LEDGER"], lambda: {}),
+    ("POST", "/api/admin/audit/resync-ledger", ["MANAGE_USERS"], lambda: {}),
     ("POST", "/api/sync/trigger", ["MANAGE_CORPUS"], lambda: {}),
     # v3 security changes: "any signed-in role" is expressed as SEARCH or VIEW_AUDIT (every role has one of them)
     ("GET", "/api/dashboard_metrics", ["SEARCH", "VIEW_AUDIT"], lambda: {}),

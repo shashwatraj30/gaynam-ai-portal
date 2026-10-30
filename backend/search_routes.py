@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from auth import require
 from database import get_connection
-from search_service import log_audit
+from audit_utils import log_audit
 
 router = APIRouter()
 MAX_SAVED = 50

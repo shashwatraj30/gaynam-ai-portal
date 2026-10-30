@@ -346,7 +346,88 @@ def _m007_lineages(conn):
 
 def _m008_audit_indexes(conn):
     conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_logs(timestamp)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action)")
+
+_LEDGER_DDL = """
+CREATE TABLE IF NOT EXISTS cryptographic_audit_ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    user_name TEXT NOT NULL,
+    user_role TEXT NOT NULL,
+    action TEXT NOT NULL,
+    details TEXT NOT NULL,
+    ip_address TEXT NOT NULL,
+    prev_hash TEXT NOT NULL,
+    current_hash TEXT NOT NULL,
+    audit_log_id INTEGER
+)
+"""
+# audit_logs.timestamp is "YYYY-MM-DD HH:MM:SS" (taken first); the ledger block's timestamp is
+# "YYYY-MM-DD HH:MM:SS.mmm" (taken a few ms later, inside record_tamper_evident_event). Both are
+# normalised to whole seconds and a block counts as the mirror of an audit row when it is within
+# this many seconds after it (or 1s before, to absorb clock/rounding skew).
+_LEDGER_MATCH_AFTER_S = 5
+_LEDGER_MATCH_BEFORE_S = 1
+
+
+def _m009_audit_ledger_sync(conn):
+    """Bug 4: add audit_logs.ledger_synced + ledger.audit_log_id and flag audit rows with no ledger block.
+
+    * audit_logs.ledger_synced INTEGER NOT NULL DEFAULT 1 (existing rows start "synced").
+    * cryptographic_audit_ledger is normally created lazily by audit_dpdp at import; it is created
+      here too (same DDL, IF NOT EXISTS) so migration order never matters.
+    * Backfill (best effort, one-to-one, in audit_logs.id order): a ledger block mirrors an audit
+      row when user_name, user_role, action, details and ip_address are equal and the block's
+      timestamp (whole seconds) is 0..5s after the audit timestamp (1s before tolerated). Matched
+      blocks get audit_log_id = audit_logs.id; audit rows with no match get ledger_synced = 0.
+    Idempotent: ADD COLUMN is guarded by PRAGMA table_info; already-linked blocks / rows are skipped.
+    """
+    from datetime import datetime
+
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(audit_logs)").fetchall()}
+    if "ledger_synced" not in cols:
+        conn.execute("ALTER TABLE audit_logs ADD COLUMN ledger_synced INTEGER NOT NULL DEFAULT 1")
+
+    conn.execute(_LEDGER_DDL)
+    lcols = {r[1] for r in conn.execute("PRAGMA table_info(cryptographic_audit_ledger)").fetchall()}
+    if "audit_log_id" not in lcols:
+        conn.execute("ALTER TABLE cryptographic_audit_ledger ADD COLUMN audit_log_id INTEGER")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ledger_audit_log_id ON cryptographic_audit_ledger(audit_log_id)")
+
+    def secs(ts):
+        try:
+            return datetime.strptime(str(ts)[:19], "%Y-%m-%d %H:%M:%S").timestamp()
+        except ValueError:
+            return None
+
+    already = {r[0] for r in conn.execute(
+        "SELECT audit_log_id FROM cryptographic_audit_ledger WHERE audit_log_id IS NOT NULL").fetchall()}
+    pool = {}
+    for r in conn.execute("SELECT id, timestamp, user_name, user_role, action, details, ip_address "
+                          "FROM cryptographic_audit_ledger WHERE audit_log_id IS NULL ORDER BY id ASC").fetchall():
+        key = (r[2], r[3], r[4], r[5], r[6])
+        pool.setdefault(key, []).append((r[0], secs(r[1])))
+
+    links, missing = [], []
+    for a in conn.execute("SELECT id, timestamp, user_name, user_role, action, details, ip_address "
+                          "FROM audit_logs ORDER BY id ASC").fetchall():
+        if a[0] in already:
+            continue
+        a_s = secs(a[1])
+        cands = pool.get((a[2], a[3], a[4], a[5] or "", a[6] or ""), [])
+        hit = None
+        if a_s is not None:
+            for i, (lid, l_s) in enumerate(cands):
+                if l_s is not None and -_LEDGER_MATCH_BEFORE_S <= l_s - a_s <= _LEDGER_MATCH_AFTER_S:
+                    hit = i
+                    break
+        if hit is None:
+            missing.append(a[0])
+        else:
+            links.append((a[0], cands.pop(hit)[0]))
+    conn.executemany("UPDATE cryptographic_audit_ledger SET audit_log_id = ? WHERE id = ?", links)
+    conn.executemany("UPDATE audit_logs SET ledger_synced = 0 WHERE id = ?", [(i,) for i in missing])
+
+
 
 
 MIGRATIONS = [
@@ -358,6 +439,7 @@ MIGRATIONS = [
     ("006_paragraphs_treatments", _m006_paragraphs_treatments),
     ("007_lineages", _m007_lineages),
     ("008_audit_indexes", _m008_audit_indexes),
+    ("009_audit_ledger_sync", _m009_audit_ledger_sync),
 ]
 
 

@@ -47,31 +47,7 @@ TEMPLATE_PHRASES = ("judicial determination by",)
 _NO_FILTER = {"court": "", "judge": "", "status": "", "year_from": None, "year_to": None}
 
 
-def log_audit(action: str, details: str, request=None, user: Optional[Dict[str, Any]] = None) -> None:
-    """Same effect as server.log_audit (audit_logs row + tamper-evident event) without importing server."""
-    try:
-        from auth import get_client_ip, decode_access_token
-        from audit_dpdp import record_tamper_evident_event
-        user = user or (getattr(request.state, "user", None) if request is not None else None)
-        if user is None and request is not None:
-            auth_h = request.headers.get("authorization", "")
-            if auth_h.startswith("Bearer "):
-                try:
-                    user = decode_access_token(auth_h.split(" ", 1)[1].strip())
-                except Exception:
-                    user = None
-        name = (user or {}).get("full_name") or (user or {}).get("email") or "anonymous"
-        role = (user or {}).get("role") or "UNKNOWN"
-        ip = get_client_ip(request)
-        conn = get_connection()
-        conn.execute("INSERT INTO audit_logs (timestamp, user_name, user_role, action, details, ip_address) "
-                     "VALUES (?, ?, ?, ?, ?, ?)",
-                     (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), name, role, action, details, ip))
-        conn.commit()
-        conn.close()
-        record_tamper_evident_event(name, role, action, details, ip)
-    except Exception as e:
-        print(f"Error logging audit: {e}")
+from audit_utils import log_audit  # noqa: E402,F401  (single shared implementation; re-exported)
 
 
 def build_fts_query(query: str) -> Tuple[str, List[str]]:
