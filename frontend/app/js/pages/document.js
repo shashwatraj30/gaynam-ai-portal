@@ -173,6 +173,7 @@ function render(params, ctx) {
     });
     setSaveMsg(S.saveMsg);
     return h('div', { class: 'dc-pane' },
+      S.doc.sexual_offence_matter ? banner({ tone: 'warn', message: t('dw.victimWarning') }) : null,
       h('p', { class: 'dc-note' }, t('dw.fieldsNote')),
       h('div', { class: 'dc-fields' }, ...rows),
       h('div', { class: 'dc-bar' }, button({ label: S.saving ? t('dw.saving') : t('dw.save'), variant: 'primary', disabled: S.saving, onClick: () => save() }), saveStatus));

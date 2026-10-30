@@ -277,6 +277,7 @@ function render(params, ctx) {
     return h('div', { class: 'g-stack' },
       r.failed ? banner({ tone: 'danger', message: `${t('intake.failed.banner')}. ${t('intake.failed.detail')}` }) : null,
       r.isSample ? banner({ tone: 'warn', message: `${t('intake.sample.banner')}. ${t('intake.sample.detail')}` }) : null,
+      r.sexualOffenceMatter ? banner({ tone: 'warn', message: t('intake.victimWarning') }) : null,
       r.isSample ? h('label', { class: 'in-check', for: 'in-sample-ack' }, ackBox, h('span', {}, t('intake.sample.ack'))) : null,
       h('div', { class: 'in-cols' }, side,
         h('div', { class: 'g-stack' },

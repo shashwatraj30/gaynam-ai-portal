@@ -82,6 +82,7 @@ export function normalizeDocument(doc) {
     vlm: source === 'vlm',
     blanked: 0,
     title: s(d.title || d.original_name),
+    sexualOffenceMatter: !!d.sexual_offence_matter,
   };
 }
 

@@ -1,7 +1,7 @@
-"""anonymize_pii: Aadhaar / phone / PAN / e-mail patterns, spans, and no false positives."""
+"""anonymize_pii: Aadhaar / phone / PAN / e-mail / victim-name patterns, spans, and no false positives."""
 import pytest
 
-from ocr_engine import anonymize_pii, clean_ocr_text
+from ocr_engine import anonymize_pii, clean_ocr_text, is_sexual_offence_matter
 
 
 def _red(text):
@@ -60,3 +60,31 @@ def test_clean_text_does_not_rewrite_ordinary_words():
     out = clean_ocr_text("The air quality was described. Airport; part. 5 Art. 14")
     assert "air quality" in out and "described" in out and "Airport" in out and "part. 5" in out
     assert "Article 14" in out
+
+
+@pytest.mark.parametrize("cue", ["prosecutrix", "victim", "survivor", "minor victim", "minor girl", "minor complainant"])
+def test_victim_name_redacted_after_cue_word(cue):
+    out, kinds, _ = _red(f"The {cue} Priya Sharma was assaulted near the market.")
+    assert kinds == {"VICTIM_NAME"} and "Priya Sharma" not in out and "[REDACTED_VICTIM_NAME_XXXX]" in out
+
+
+def test_victim_name_with_namely_and_comma():
+    out, _, r = _red("The victim, namely Anita Devi, stated that the accused entered her house.")
+    assert "Anita Devi" not in out and r["total_redactions"] == 1
+
+
+@pytest.mark.parametrize("text", [
+    "The victim compensation scheme under Section 357A applies here.",
+    "Victim No. 2 identified the accused in the test identification parade.",
+    "The victim identity protection order was issued by the trial court.",
+])
+def test_victim_cue_false_positives_not_redacted(text):
+    out, kinds, r = _red(text)
+    assert kinds == set() and r["total_redactions"] == 0 and out == text
+
+
+def test_sexual_offence_matter_flag():
+    assert is_sexual_offence_matter("The accused is charged under Section 376 IPC for rape.")
+    assert is_sexual_offence_matter("Proceedings under the POCSO Act against the accused.")
+    assert not is_sexual_offence_matter("This is a plain bail application for a Section 420 IPC cheating case.")
+    assert not is_sexual_offence_matter("")

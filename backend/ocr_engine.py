@@ -13,7 +13,9 @@ Designed specifically for Indian Court Filings:
    - Synopsis of Facts
    - Grounds of Appeal / Challenge
    - Prayer / Relief Sought
-4. Performs real-time DPDP Act 2023 PII redaction (Aadhaar, PAN, phone, e-mail; names are not redacted).
+4. Performs real-time DPDP Act 2023 PII redaction (Aadhaar, PAN, phone, e-mail) plus a best-effort
+   Section 228A IPC / POCSO Act victim-identity redaction (see VICTIM_NAME below); other personal
+   names are not redacted.
 """
 
 import os
@@ -29,6 +31,34 @@ PAN_REGEX = re.compile(r'(?<![A-Za-z0-9])[A-Za-z]{5}\d{4}[A-Za-z](?![A-Za-z0-9])
 # Indian mobile: optional +91 / 0 prefix, 10 digits starting 6-9, optional single space/hyphen in the middle.
 PHONE_REGEX = re.compile(r'(?<![\d+])(?:\+91[ \t-]?|0[ \t-]?)?[6-9]\d{4}[ \t-]?\d{5}(?!\d)')
 EMAIL_REGEX = re.compile(r'(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}')
+
+# Section 228A IPC prohibits disclosing a sexual-offence victim's identity; POCSO Act s.23 does the
+# same for a child victim/witness. This is a best-effort heuristic, NOT name recognition: it only
+# catches a name immediately following one of these cue words, so a name mentioned elsewhere without
+# a nearby cue is missed. The excluded-word lookahead avoids redacting non-name phrases like
+# "victim compensation scheme" or "victim No. 2". The whole cue phrase + name is redacted together
+# (not just the name) so a partial/ambiguous match fails toward redacting more text, not less.
+VICTIM_CUE_RE = re.compile(
+    r'\b(?:prosecutrix|survivor|victim|minor\s+(?:girl|victim|complainant))\b'
+    r'[\s,]*(?:namely|named)?[\s,]*'
+    r'(?!(?:no\.?|number|compensation|impact|statement|fund|identity|protection|and|of|is|was)\b)'
+    r'([A-Z][a-zA-Z.\'-]+(?:\s+[A-Z][a-zA-Z.\'-]+){0,3})'
+)
+
+# Flags IPC/POCSO language associated with a sexual offence, so the caller can warn the user to
+# verify redaction manually -- this does not itself redact anything, it is a signal only.
+_SEXUAL_OFFENCE_RE = re.compile(
+    r'\b(?:section\s*376[a-e]?\b|376[a-e]?\s*ipc|pocso|protection of children from sexual offences'
+    r'|\brape\b|sexual assault|sexually assaulted|outraging (?:her|the) modesty|section\s*354[a-d]?\b)',
+    re.I,
+)
+
+
+def is_sexual_offence_matter(text: str) -> bool:
+    """True if the text invokes IPC/POCSO language associated with a sexual offence (where Section
+    228A IPC prohibits disclosing the victim's identity). Signal only -- callers should prompt the
+    user to manually verify no victim-identifying text remains before sharing/exporting."""
+    return bool(_SEXUAL_OFFENCE_RE.search(text or ""))
 
 # Legal abbreviations normalizer (word-bounded so ordinary words such as "air" or "describe" are not rewritten)
 CITATION_CORRECTIONS = [
@@ -109,13 +139,15 @@ _PII_PATTERNS = (
     ("AADHAAR", AADHAAR_REGEX, "[REDACTED_AADHAAR_XXXX]"),
     ("PAN", PAN_REGEX, "[REDACTED_PAN_XXXX]"),
     ("PHONE", PHONE_REGEX, "[REDACTED_PHONE_XXXX]"),
+    ("VICTIM_NAME", VICTIM_CUE_RE, "[REDACTED_VICTIM_NAME_XXXX]"),
 )
 
 
 def anonymize_pii(text: str) -> Dict[str, Any]:
-    """Redacts Aadhaar, PAN, phone numbers and e-mail addresses (DPDP Act 2023).
-
-    Only these identifier patterns are detected. Personal names and addresses are NOT redacted.
+    """Redacts Aadhaar, PAN, phone numbers and e-mail addresses (DPDP Act 2023), plus a best-effort
+    attempt at a sexual-offence victim's name (Section 228A IPC / POCSO Act) when it directly follows
+    a cue word like "victim" or "prosecutrix" -- see VICTIM_CUE_RE's docstring for that heuristic's
+    limits. Other personal names and addresses are NOT redacted.
     ``matches`` holds the span (in the input text) of every redaction for previews.
     """
     text = text or ""

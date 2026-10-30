@@ -87,6 +87,7 @@ export default {
   'intake.openInDocuments': 'Open in Documents',
   'intake.failed.banner': 'The text could not be read',
   'intake.failed.detail': 'Nothing was taken from this file, so the fields are empty. Type the details yourself, or go back and try another file.',
+  'intake.victimWarning': 'This may involve a sexual-offence victim, whose identity Section 228A IPC (and the POCSO Act, for a child) prohibits disclosing. Automatic redaction of a victim’s name is best-effort only and can miss names — read the full text yourself before saving, sharing, or exporting.',
   'intake.read.failed': 'Nothing could be read from this file.',
   'intake.err.conflict': 'This document was changed elsewhere. Your edits are still here; try again to save them as the newest version.',
   'intake.err.incomplete': 'The document needs a cause title, facts and at least one issue before it can be confirmed.',

@@ -215,12 +215,18 @@ def doc_dict(conn, row, detail: bool = False, light: bool = False) -> Dict[str, 
               "saved_at": ex["saved_at"],
               "fields": {k: f[k] for k in ("case_title", "case_number", "court", "petitioner", "respondent")},
               "issues_count": len(ex["issues"])}
+    sexual_offence_matter = False
+    if detail and not light:
+        from ocr_engine import is_sexual_offence_matter
+        t = conn.execute("SELECT text_redacted FROM document_text WHERE document_id = ?", (row["id"],)).fetchone()
+        sexual_offence_matter = is_sexual_offence_matter(t["text_redacted"] if t else "")
     d = {
         "id": row["id"], "title": row["title"], "doc_type": row["doc_type"], "status": row["status"],
         "source": row["source"], "matter_key": row["matter_key"] or "", "original_name": row["original_name"],
         "mime": row["mime"], "size": row["size"], "sha256": row["sha256"], "chars": row["chars"],
         "pages": row["pages"], "redactions": reds,
         "redaction_total": sum(int(r.get("count") or 0) for r in reds),
+        "sexual_offence_matter": sexual_offence_matter,
         "uploaded_by": row["uploaded_by"], "uploaded_role": row["uploaded_role"],
         "created_at": row["created_at"], "updated_at": row["updated_at"],
         "extraction": ex,
