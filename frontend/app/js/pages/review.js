@@ -217,15 +217,24 @@ async function render({ id }, ctx) {
         button({ label: t('review.docx'), variant: 'secondary', icon: 'download', disabled: R.busy, onClick: download }),
         button({ label: t('review.print'), variant: 'ghost', onClick: printView }))));
   }
+  // window.open must run synchronously inside the click's call stack (before any await) or popup blockers
+  // drop it. 'noopener' is deliberately not passed: it makes some browsers return null, defeating the
+  // "open blank, then navigate" pattern. The print HTML is static (no scripts) and same-app, so opener
+  // isolation is not security-critical; we still sever it with win.opener = null.
   async function printView() {
+    const win = window.open('', '_blank');
+    if (!win) { toast(t('review.popupBlocked'), { tone: 'warn' }); return; }
+    try { win.opener = null; win.document.body.textContent = 'Loading…'; } catch { /* cross-origin handle: ignore */ }
     R.busy = true; paintSign();
     try {
       const blob = await api.printHtml(id);
       const url = URL.createObjectURL(blob);
-      window.open(url, '_blank', 'noopener');
+      win.location.href = url;
       setTimeout(() => URL.revokeObjectURL(url), 60000);
-    } catch (e) { toast(e?.message || t('state.error'), { tone: 'danger' }); }
-    finally { R.busy = false; paintSign(); }
+    } catch (e) {
+      try { win.close(); } catch { /* already closed */ }
+      toast(e?.message || t('state.error'), { tone: 'danger' });
+    } finally { R.busy = false; paintSign(); }
   }
   function paintAll() { paintTop(); paintChecks(); }
 

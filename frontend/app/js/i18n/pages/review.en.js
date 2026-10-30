@@ -49,6 +49,7 @@ export default {
   'review.return': 'Return to clerk',
   'review.docx': 'Download DOCX',
   'review.print': 'Open print view',
+  'review.popupBlocked': 'Pop-up blocked. Allow pop-ups for this site to open the print view.',
   'review.gate.noperm': 'Your role cannot approve or seal drafts.',
   'review.gate.pending': 'Waiting for the citation check to finish.',
   'review.gate.sealed': 'This draft is sealed. It can no longer change.',
