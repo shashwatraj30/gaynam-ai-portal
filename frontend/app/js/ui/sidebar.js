@@ -4,6 +4,9 @@
 import { h, icon } from '../dom.js';
 import { t } from '../i18n/index.js';
 
+// frontend/ is served at /static (backend/server.py); same seal used on the sign-in page.
+const SEAL_URL = '/static/nluj_seal.png';
+
 export const NAV_ITEMS = [
   { id: 'home', route: '/', labelKey: 'nav.home', icon: 'home', permission: null, match: (p) => p === '/' },
   { id: 'research', route: '/research', labelKey: 'nav.research', icon: 'search', permission: 'SEARCH', match: (p) => p.startsWith('/research') },
@@ -73,7 +76,7 @@ export function buildSidebar({ can, collapsed = false, onToggle, user } = {}) {
   setCollapsed(collapsed);
 
   const brand = h('a', { class: 'g-brand', href: '#/' },
-    h('span', { class: 'g-brand__mark', 'aria-hidden': 'true' }, icon('scale', 20)),
+    h('img', { class: 'g-brand__mark', src: SEAL_URL, alt: '', 'aria-hidden': 'true', width: 34, height: 34 }),
     h('span', { class: 'g-brand__name' }, t('app.name')));
   // Session card (expanded mode only; css hides it when collapsed): who is signed in and in which role.
   const sName = user?.full_name || user?.email || '';

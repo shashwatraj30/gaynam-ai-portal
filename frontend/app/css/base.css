@@ -50,7 +50,7 @@ main:focus { outline: none; }
 }
 .g-brand { display: flex; align-items: center; gap: 10px; padding: var(--s1) 10px var(--s5); font-family: var(--font-serif); font-size: calc(20px * var(--fz)); font-weight: 600; color: var(--ink); }
 .g-brand:hover { text-decoration: none; }
-.g-brand__mark { width: 34px; height: 34px; border-radius: 9px; background: var(--primary); color: var(--on-primary); display: inline-flex; align-items: center; justify-content: center; }
+.g-brand__mark { width: 34px; height: 34px; border-radius: var(--r-pill); background: var(--surface); box-shadow: 0 0 0 1px var(--line); object-fit: contain; flex-shrink: 0; }
 .g-nav { display: flex; flex-direction: column; gap: 2px; }
 .g-nav__section { font-size: var(--fs-chip); line-height: calc(16px * var(--fz)); color: var(--muted); padding: var(--s5) var(--s3) 6px; }
 .g-nav__item { display: flex; align-items: center; gap: var(--s3); min-height: 42px; padding: 9px var(--s3); border-radius: var(--r-md); color: var(--ink); font-size: var(--fs-body); }
